@@ -11,7 +11,6 @@ import { LocalizationProvider } from '@mui/x-date-pickers/LocalizationProvider';
 import { Patient } from '../../types/Patient';
 import AppButton from '../common/AppButton';
 
-// Validation regex
 const EMAIL_REGEX = /^[a-zA-Z0-9._%+-]+@[a-zA-Z0-9.-]+\.[a-zA-Z]{2,}$/;
 const PHONE_REGEX = /^\+?[0-9]{10,15}$/;
 
@@ -32,7 +31,6 @@ const PatientForm = ({
   loading = false,
   error = null,
 }: PatientFormProps) => {
-  // Form fields
   const [firstName, setFirstName] = useState(initialData?.firstName || '');
   const [lastName, setLastName] = useState(initialData?.lastName || '');
   const [email, setEmail] = useState(initialData?.email || '');
@@ -41,13 +39,11 @@ const PatientForm = ({
   const [address, setAddress] = useState(initialData?.address || '');
   const [notes, setNotes] = useState(initialData?.notes || '');
   
-  // Form validation errors
   const [firstNameError, setFirstNameError] = useState('');
   const [lastNameError, setLastNameError] = useState('');
   const [emailError, setEmailError] = useState('');
   const [phoneError, setPhoneError] = useState('');
 
-  // Update form when initialData changes (for edit mode)
   useEffect(() => {
     if (initialData) {
       setFirstName(initialData.firstName || '');
@@ -60,35 +56,29 @@ const PatientForm = ({
     }
   }, [initialData]);
 
-  // Handle form validation
   const validateForm = () => {
     let isValid = true;
     
-    // Reset errors
     setFirstNameError('');
     setLastNameError('');
     setEmailError('');
     setPhoneError('');
     
-    // Validate firstName
     if (!firstName.trim()) {
       setFirstNameError('First name is required');
       isValid = false;
     }
     
-    // Validate lastName
     if (!lastName.trim()) {
       setLastNameError('Last name is required');
       isValid = false;
     }
     
-    // Validate email (if provided)
     if (email && !EMAIL_REGEX.test(email)) {
       setEmailError('Please enter a valid email address');
       isValid = false;
     }
     
-    // Validate phone (if provided)
     if (phoneNumber && !PHONE_REGEX.test(phoneNumber)) {
       setPhoneError('Please enter a valid phone number');
       isValid = false;
@@ -97,7 +87,6 @@ const PatientForm = ({
     return isValid;
   };
   
-  // Handle form submission
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     

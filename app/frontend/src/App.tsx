@@ -12,7 +12,8 @@ import PatientList from "./pages/patients/PatientList";
 import PatientDetails from "./pages/patients/PatientDetails";
 import PatientAdd from "./pages/patients/PatientAdd";
 import PatientEdit from "./pages/patients/PatientEdit";
-import DentalChart from "./pages/dentalChart/DentalChart";
+import CaseList from "./pages/cases/CaseList";
+import CaseDetails from "./pages/cases/CaseDetails";
 
 function App() {
   return (
@@ -30,8 +31,11 @@ function App() {
               <Route path="/patients/:id" element={<PatientDetails />} />
               <Route path="/patients/new" element={<PatientAdd />} />
               <Route path="/patients/:id/edit" element={<PatientEdit />} />
-              <Route path="/patients/:patientId/cases/:caseId" element={<DentalChart />} />
+              <Route path="/patients/:patientId/cases" element={<CaseList />} />
             </Route>
+          </Route>
+          <Route element={<RequireAuth />}>
+            <Route path="/patients/:patientId/cases/:caseId" element={<CaseDetails />} />
           </Route>
           <Route path="*" element={<Missing />} />
         </Routes>

@@ -17,7 +17,6 @@ import {
 import { getPatientById } from "../../services/PatientsService";
 import { getCaseById } from "../../services/CasesService";
 
-// Define breadcrumb item interface
 interface BreadcrumbItem {
   label: string;
   path: string | null;
@@ -29,16 +28,13 @@ const Layout = () => {
   const location = useLocation();
   const { currentUser } = useAuth();
   
-  // State for dynamic data in breadcrumbs
   const [dynamicBreadcrumbs, setDynamicBreadcrumbs] = useState<BreadcrumbItem[]>([]);
   const [isLoadingBreadcrumbs, setIsLoadingBreadcrumbs] = useState(false);
 
-  // Process URL and load any required data for breadcrumbs
   useEffect(() => {
     const generateDynamicBreadcrumbs = async () => {
       const pathSegments = location.pathname.split('/').filter(segment => segment);
       
-      // Home page - no breadcrumbs needed
       if (pathSegments.length === 0) {
         setDynamicBreadcrumbs([]);
         return;
@@ -47,7 +43,6 @@ const Layout = () => {
       // Start building breadcrumbs
       const breadcrumbs: BreadcrumbItem[] = [];
       
-      // Always add home
       breadcrumbs.push({ label: 'Home', path: '/' });
       
       // Process path segments
@@ -241,7 +236,7 @@ const Layout = () => {
               textDecoration: 'none',
             }}
           >
-            Confi<span style={{ color: '#fff' }}>Dent</span>
+            Chest<span style={{ color: '#fff' }}>Net</span>
           </Typography>
           
           {currentUser ? (

@@ -65,6 +65,7 @@ const PatientList = () => {
     navigate('/patients/new');
   };
 
+
   const columns: ColumnDef<Patient>[] = [
     {
       id: 'name',

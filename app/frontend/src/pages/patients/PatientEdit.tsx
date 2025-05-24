@@ -66,7 +66,6 @@ const PatientEdit = () => {
     }
   };
   
-  // Loading state
   if (loading) {
     return (
       <Box>

@@ -2,19 +2,14 @@ import { useState } from 'react';
 import { 
   Box, 
   Typography, 
-  IconButton, 
-  Dialog, 
-  DialogTitle, 
-  DialogContent, 
-  DialogContentText, 
-  DialogActions,
+  IconButton,
   Tooltip
 } from '@mui/material';
 import { Case } from '../../types/Case';
 import { format } from 'date-fns';
 import { DataTable, ColumnDef } from '../common/DataTable';
 import DeleteIcon from '@mui/icons-material/Delete';
-import AppButton from '../common/AppButton';
+import ConfirmationDialog from '../common/ConfirmationDialog';
 
 interface PatientHistoryProps {
   patientId: string;
@@ -28,14 +23,11 @@ const PatientHistory = ({
   onCaseClick,
   onDeleteCase
 }: PatientHistoryProps) => {
-  // State for delete confirmation
   const [caseToDelete, setCaseToDelete] = useState<Case | null>(null);
   const [deleteLoading, setDeleteLoading] = useState(false);
-  const [deleteError, setDeleteError] = useState<string | null>(null);
 
-  // Handle delete click
   const handleDeleteClick = (e: React.MouseEvent, row: Case) => {
-    e.stopPropagation(); // Prevent row click
+    e.stopPropagation();
     setCaseToDelete(row);
   };
 
@@ -44,12 +36,10 @@ const PatientHistory = ({
     
     try {
       setDeleteLoading(true);
-      setDeleteError(null);
       await onDeleteCase(caseToDelete.id);
       setCaseToDelete(null);
     } catch (error) {
       console.error('Error deleting case:', error);
-      setDeleteError('Failed to delete case. Please try again.');
     } finally {
       setDeleteLoading(false);
     }
@@ -57,7 +47,6 @@ const PatientHistory = ({
 
   const handleCancelDelete = () => {
     setCaseToDelete(null);
-    setDeleteError(null);
   };
 
   const columns: ColumnDef<Case>[] = [
@@ -141,41 +130,14 @@ const PatientHistory = ({
       />
 
       {/* Delete Confirmation Dialog */}
-      <Dialog
-        open={!!caseToDelete}
-        onClose={handleCancelDelete}
-      >
-        <DialogTitle>
-          Delete Case
-        </DialogTitle>
-        <DialogContent>
-          <DialogContentText>
-            {deleteError ? (
-              <Box component="span" color="error.main">{deleteError}</Box>
-            ) : (
-              <>
-                Are you sure you want to delete the case "{caseToDelete?.title}"?
-                <Box component="p" fontWeight="bold" mt={1}>
-                  This action cannot be undone and will delete all associated dental records.
-                </Box>
-              </>
-            )}
-          </DialogContentText>
-        </DialogContent>
-        <DialogActions>
-          <AppButton onClick={handleCancelDelete} disabled={deleteLoading}>
-            Cancel
-          </AppButton>
-          <AppButton 
-            onClick={handleConfirmDelete} 
-            color="error" 
-            loading={deleteLoading}
-            disabled={deleteLoading}
-          >
-            Delete
-          </AppButton>
-        </DialogActions>
-      </Dialog>
+      <ConfirmationDialog
+        open={caseToDelete !== null}
+        title="Delete Case"
+        message={`Are you sure you want to delete the case "${caseToDelete?.title}"?`}
+        onConfirm={handleConfirmDelete}
+        onCancel={handleCancelDelete}
+        loading={deleteLoading}
+      />
     </Box>
   );
 };

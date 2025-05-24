@@ -24,6 +24,8 @@ const convertCase = (doc: any): Case => {
         description: data.description || "",
         diagnosis: data.diagnosis || "",
         treatmentPlan: data.treatmentPlan || "",
+        notes: data.notes || [],
+        boundingBoxes: data.boundingBoxes || [],
         createdAt: data.createdAt ? data.createdAt.toDate() : undefined,
         updatedAt: data.updatedAt ? data.updatedAt.toDate() : undefined
     };

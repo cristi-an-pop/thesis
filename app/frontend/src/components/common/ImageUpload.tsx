@@ -14,21 +14,10 @@ interface ImageUploadProps {
     onFileSelect: (file: File | null) => void,
     acceptedFileTypes?: string,
     maxSizeMB?: number,
-    disabled?: boolean,
-    detectionResults?: { boxes: number[][]; scores: number[]; classes: number[] } | null,
-    segmentationResults?: { boxes: number[][]; scores: number[]; classes: number[]; masks: number[][] } | null,
-    canvasRef?: HTMLCanvasElement
+    disabled?: boolean
 }
 
-const ImageUpload = ({
-                         onFileSelect,
-                         acceptedFileTypes = "image/*",
-                         maxSizeMB = 5,
-                         disabled = false,
-                         detectionResults,
-                         segmentationResults,
-                         canvasRef
-                     }: ImageUploadProps) => {
+const ImageUpload = ({ onFileSelect, acceptedFileTypes = "image/*", maxSizeMB = 5, disabled = false }: ImageUploadProps) => {
     const [file, setFile] = useState<File | null>(null);
     const [previewUrl, setPreviewUrl] = useState<string | null>(null);
     const [error, setError] = useState<string | null>(null);
@@ -60,7 +49,6 @@ const ImageUpload = ({
     };
 
     const processFile = (selectedFile: File | null) => {
-        // Reset error
         setError(null);
 
         if (!selectedFile) {
@@ -149,10 +137,10 @@ const ImageUpload = ({
                 ) : (
                     <Box sx={{
                         position: 'relative',
-                        display: 'flex', // Use flexbox
-                        flexDirection: 'column', // Stack children vertically
-                        alignItems: 'center', // Center children horizontally in a column layout
-                        justifyContent: 'center' // Center children vertically (optional, but good practice with alignItems)
+                        display: 'flex',
+                        flexDirection: 'column',
+                        alignItems: 'center',
+                        justifyContent: 'center'
                     }}>
                         <Box sx={{
                             textAlign: 'center',
@@ -200,12 +188,6 @@ const ImageUpload = ({
                                 {file?.name}
                             </Typography>
                         </Box>
-                        {/*<CanvasDrawer*/}
-                        {/*    imageSrc={previewUrl} // Pass the image source URL*/}
-                        {/*    detectionResults={detectionResults} // Pass the detection results state*/}
-                        {/*    segmentationResults={segmentationResults} // Pass the segmentation results state*/}
-                        {/*    canvasRef={canvasRef} // Pass the canvas ref*/}
-                        {/*/>*/}
                     </Box>
                 )}
             </Paper>

@@ -1,4 +1,4 @@
-import {useEffect, useRef, useState} from 'react';
+import {useState} from 'react';
 import {
   Box,
   TextField,
@@ -6,6 +6,9 @@ import {
   Typography,
   Alert,
   Divider,
+  Paper,
+  LinearProgress,
+  CircularProgress,
 } from '@mui/material';
 import { addCase } from '../../services/CasesService';
 import { addXRayImage } from '../../services/XRayService';
@@ -13,13 +16,9 @@ import { Case } from '../../types/Case';
 import AppButton from '../common/AppButton';
 import ImageUpload from '../common/ImageUpload';
 import CloudUploadIcon from '@mui/icons-material/CloudUpload';
+import SmartToyIcon from '@mui/icons-material/SmartToy';
 import { generateTeethForCase } from '@/services/TeethService';
-
-import * as tf from "@tensorflow/tfjs";
-import "@tensorflow/tfjs-backend-webgl";
-import {detect} from "../../ml/detect";
-import {segment} from "../../ml/segment";
-tf.setBackend("webgl");
+import ModelService from '../../services/ModelService';
 
 interface CaseFormProps {
   patientId: string;
@@ -27,98 +26,80 @@ interface CaseFormProps {
 }
 
 const CaseForm = ({ patientId, onSubmitSuccess }: CaseFormProps) => {
-  // @ts-ignore
+  // Form fields
   const [title, setTitle] = useState('');
   const [description, setDescription] = useState('');
   const [diagnosis, setDiagnosis] = useState('');
   const [xrayFile, setXrayFile] = useState<File | null>(null);
 
+  // Form states
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [titleError, setTitleError] = useState('');
 
-  // Model detection variables
-  const [modelLoading, setModelLoading] = useState({ loading: true, progress: 0 }); // loading state
-  const [model, setModel] = useState({
-    net: null,
-    inputShape: [1, 0, 0, 3],
-  });
-  const [segModel, setSegModel] = useState({
-    net: null,
-    inputShape: [1, 0, 0, 3],
-  });
-  const [modelName] = useState("yolo11n_detect"); // selected model name
-  const [segmentationModelName] = useState("y11n_seg640"); // selected model name
-  const [inferenceRunning, setInferenceRunning] = useState(false);
-  const [loadingTime, setLoadingTime] = useState("");
-  const [runningTime, setRunningTime] = useState("");
-  const [loadingImage, setLoadingImage] = useState(false);
-  const [detectionResults, setDetectionResults] = useState<{ boxes: number[][], scores: number[], classes: number[] } | null>(null);
-  const [segmentationResults, setSegmentationResults] = useState<{ boxes: number[][], scores: number[], classes: number[], masks: number[][] } | null>(null);
-  const canvasRef = useRef<HTMLCanvasElement>(null);
+  // Chest X-ray Classification states
+  const [classificationResults, setClassificationResults] = useState<{label: string, probability: number}[]>([]);
+  const [classifying, setClassifying] = useState(false);
+  const [classificationError, setClassificationError] = useState<string | null>(null);
 
-  // END Model detection variables
+  // Add these to your existing state variables in CaseForm.tsx
+  const [gradCAMImage, setGradCAMImage] = useState<string | null>(null);
+  const [generatingGradCAM, setGeneratingGradCAM] = useState(false);
+  const [gradCAMError, setGradCAMError] = useState<string | null>(null);
 
-  useEffect(() => {
-    tf.ready().then(async () => {
-      setModelLoading({ loading: true, progress: 0 });
-      var startTime = performance.now();
-      const yolo = await tf.loadGraphModel(
-          `/${modelName}_web_model/model.json`,
-          {
-            onProgress: (fractions) => {
-              setModelLoading({ loading: true, progress: fractions }); // set loading fractions
-            },
-          }
-      );
-      var endTime = performance.now();
-      console.log(`Detection model loaded successfully in ${(endTime - startTime).toFixed(2)} ms`);
-      var segStartTime = performance.now();
-      const yoloSeg = await tf.loadGraphModel(
-          `/${segmentationModelName}_web_model/model.json`,
-          {
-            onProgress: (fractions) => {
-              setModelLoading({ loading: true, progress: fractions }); // set loading fractions
-            },
-          }
-      );
-      endTime = performance.now();
-      setLoadingTime((endTime - startTime).toFixed(2));
-      console.log(`Segmentatinon model loaded successfully in ${(endTime - segStartTime).toFixed(2)} ms`);
-      console.log(`All models loaded successfully in ${(endTime - startTime).toFixed(2)} ms`);
-      // warming up model
-      // @ts-ignore
-      const dummyInputSeg = tf.ones(yoloSeg.inputs[0].shape);
-      const warmupResultsSeg = yoloSeg.execute(dummyInputSeg);
-      const dummyInput = tf.ones(yolo.inputs[0].shape);
-      const warmupResults = yolo.execute(dummyInput);
-
-      setModelLoading({ loading: false, progress: 1 });
-      startTime = performance.now();
-      setModel({
-        // @ts-ignore
-        net: yolo,
-        // @ts-ignore
-        inputShape: yolo.inputs[0].shape,
-      });
-      console.log("warmupResultsSeg",warmupResultsSeg)
-      setSegModel({
-        // @ts-ignore
-        net: yoloSeg,
-        // @ts-ignore
-        inputShape: yoloSeg.inputs[0].shape,
-        // @ts-ignore
-        outputShape: warmupResultsSeg.map((e) => e.shape),
-      });
-      endTime = performance.now();
-      tf.dispose([warmupResults,warmupResultsSeg, dummyInput, dummyInputSeg]); // cleanup memory
-      console.log(`Models warmed up in ${(endTime - startTime).toFixed(2)} ms`);
-    });
-  }, [modelName]); // reload model when modelName changes
+  // Handle chest X-ray classification
+  const handleClassifyImage = async (imageElement: HTMLImageElement) => {
+    try {
+      setClassifying(true);
+      setClassificationError(null);
+      setGradCAMImage(null);
+      setGradCAMError(null);
+      
+      console.log('Starting chest X-ray classification...');
+      const results = await ModelService.classifyImage(imageElement);
+      
+      setClassificationResults(results);
+      console.log('Classification results:', results);
+      
+      // Auto-fill diagnosis with top predictions (only if diagnosis is empty)
+      const topPredictions = results
+        .filter(r => r.probability > 0.3) // Only confident predictions
+        .slice(0, 3) // Top 3
+        .map(r => `${r.label} (${(r.probability * 100).toFixed(1)}%)`)
+        .join(', ');
+      
+      if (topPredictions && !diagnosis.trim()) {
+        setDiagnosis(`AI Suggestion: ${topPredictions}`);
+      }
+      
+      // Generate Grad-CAM for top prediction
+      if (results.length > 0) {
+        setGeneratingGradCAM(true);
+        try {
+          console.log('Generating Grad-CAM visualization...');
+          const topClassIndex = results.findIndex(r => r.probability === Math.max(...results.map(r => r.probability)));
+          const gradCAMCanvas = await ModelService.generateGradCAM(imageElement, topClassIndex);
+          const overlayCanvas = await ModelService.overlayGradCAM(imageElement, gradCAMCanvas);
+          setGradCAMImage(overlayCanvas.toDataURL());
+          console.log('Grad-CAM generated successfully');
+        } catch (gradCAMError) {
+          console.error('Grad-CAM generation failed:', gradCAMError);
+          setGradCAMError('Failed to generate visualization. This feature may not be available for this model.');
+        } finally {
+          setGeneratingGradCAM(false);
+        }
+      }
+      
+    } catch (error) {
+      console.error('Classification failed:', error);
+      setClassificationError('Failed to classify image. Please try again.');
+    } finally {
+      setClassifying(false);
+    }
+  };
 
   const validateForm = () => {
     let isValid = true;
-
     setTitleError('');
 
     if (!title.trim()) {
@@ -173,82 +154,33 @@ const CaseForm = ({ patientId, onSubmitSuccess }: CaseFormProps) => {
 
   const handleFileSelect = (file: File | null) => {
     setXrayFile(file);
-    setInferenceRunning(false); // Reset inference state on new file selection
-    setDetectionResults(null); // Clear previous results on new file select
-    setSegmentationResults(null); // Clear previous results on new file select
-
-    const reader = new FileReader();
-
-    reader.onload = (e) => {
-      const img = new Image();
-      img.onload = async () => {
-        if (model && !inferenceRunning) { // Check if model is loaded and no inference is running
-          setInferenceRunning(true);
-          console.log("Running detection inference...");
-
-          try {
-            var startTime = performance.now();
-            const detectionResults = await detect(img, model);
-            console.debug(`Detection running time ${(performance.now() - startTime).toFixed(2)}`)
-            setRunningTime((performance.now() - startTime).toFixed(2));
-            setDetectionResults(detectionResults);
-            console.log("Detection Inference complete. Detection results:", detectionResults);
-
-            startTime = performance.now();
-            const segmentationResults = await segment(img, segModel);
-            setSegmentationResults(segmentationResults)
-            console.log(`Segmentation running time ${(performance.now() - startTime).toFixed(2)}`)
-            console.log("Segmentation Inference complete. Segmentation results:", segmentationResults);
-
-          } catch (error) {
-            console.error("Error during detection:", error);
-            setRunningTime("")
-            setDetectionResults(null); // Clear results on error
-            setSegmentationResults(null); // Clear results on error
-
-            // Handle detection errors
-          } finally {
-            // Optional: Unset inference running state
-            setInferenceRunning(false);
-          }
-
-        } else if (!model) {
-          console.warn("Model not loaded yet. Cannot run inference.");
-        } else if (inferenceRunning) {
-          console.warn("Inference is already running.");
-        }
-
-      };
-      img.onerror = (error) => {
-        console.error("Error loading image:", error);
-        // Optional: Handle image loading errors, unset loading states
-        setLoadingImage(false);
-        setInferenceRunning(false);
-        setRunningTime("")
-        setDetectionResults(null); // Clear results on error
-        setSegmentationResults(null); // Clear results on error
-
-      };
-      // @ts-ignore
-      img.src = e.target.result as string; // Set the image source
-    };
-
-    reader.onerror = (error) => {
-      console.error("Error reading file:", error);
-      // Optional: Handle file reading errors, unset loading states
-      setLoadingImage(false);
-      setInferenceRunning(false);
-      setRunningTime("")
-      setDetectionResults(null); // Clear results on error
-
-    };
-
+    setClassificationResults([]);
+    setClassificationError(null);
 
     if (file) {
-      // @ts-ignore
-      reader.readAsDataURL(file); // Read the file as a data URL
+      const reader = new FileReader();
+      reader.onload = (e) => {
+        const img = new Image();
+        img.onload = () => handleClassifyImage(img);
+        // @ts-ignore
+        img.src = e.target.result as string;
+      };
+      reader.readAsDataURL(file);
     }
-  }
+  };
+
+  const handleReclassify = async () => {
+    if (!xrayFile) return;
+
+    const reader = new FileReader();
+    reader.onload = (e) => {
+      const img = new Image();
+      img.onload = () => handleClassifyImage(img);
+      // @ts-ignore
+      img.src = e.target.result as string;
+    };
+    reader.readAsDataURL(xrayFile);
+  };
 
   return (
     <Box component="form" onSubmit={handleSubmit} noValidate>
@@ -258,15 +190,8 @@ const CaseForm = ({ patientId, onSubmitSuccess }: CaseFormProps) => {
         </Alert>
       )}
       
-      <Grid container spacing={3}>
-        {/* Case Information Section */}
-        <Grid item xs={12}>
-          <Typography variant="h6" sx={{ mb: 2 }}>
-            Case Information
-          </Typography>
-          <Divider sx={{ mb: 3 }} />
-        </Grid>
-        
+      <Grid container spacing={3} padding={3}>
+        {/* Case Information Section */}        
         <Grid item xs={12} md={6}>
           <TextField
             label="Case Title"
@@ -287,6 +212,7 @@ const CaseForm = ({ patientId, onSubmitSuccess }: CaseFormProps) => {
             onChange={(e) => setDiagnosis(e.target.value)}
             fullWidth
             disabled={loading}
+            helperText="AI suggestions will appear here automatically, but you can modify or replace them"
           />
         </Grid>
         
@@ -304,27 +230,174 @@ const CaseForm = ({ patientId, onSubmitSuccess }: CaseFormProps) => {
         
         {/* X-Ray Upload Section */}
         <Grid item xs={12}>
-          <Typography variant="h6" sx={{ mt: 2, mb: 2 }}>
-            Panoramic X-Ray
-          </Typography>
-          <Divider sx={{ mb: 3 }} />
-          <Typography variant="h8" sx={{ mt: 2, mb: 2 }}>
-            Loaded models in {loadingTime && `${loadingTime} ms`} {inferenceRunning ? "| running model ...." : ""} {runningTime !== "" ? "| running in " +`${runningTime} ms` : "" }
-          </Typography>
-          <Divider sx={{ mb: 3 }} />
-        </Grid>
-        
-        <Grid item xs={12}>
           <ImageUpload
-              detectionResults={detectionResults}
-              segmentationResults={segmentationResults}
-              canvasRef = {canvasRef}
             onFileSelect={handleFileSelect}
             acceptedFileTypes="image/*"
             maxSizeMB={12}
             disabled={loading}
           />
         </Grid>
+
+        {/* AI Classification Results */}
+        {(classificationResults.length > 0 || classifying || classificationError) && (
+          <Grid item xs={12}>
+            <Paper sx={{ p: 3, mt: 2 }}>
+              <Box sx={{ display: 'flex', alignItems: 'center', mb: 2 }}>
+                <SmartToyIcon sx={{ mr: 1, color: 'primary.main' }} />
+                <Typography variant="h6" sx={{ flexGrow: 1 }}>
+                  AI Classification Results
+                </Typography>
+                {classifying && <CircularProgress size={20} />}
+                {xrayFile && !classifying && (
+                  <AppButton
+                    variant="outlined"
+                    size="small"
+                    onClick={handleReclassify}
+                    startIcon={<SmartToyIcon />}
+                  >
+                    Re-analyze
+                  </AppButton>
+                )}
+              </Box>
+              
+              {classificationError && (
+                <Alert severity="error" sx={{ mb: 2 }}>
+                  {classificationError}
+                </Alert>
+              )}
+              
+              {classifying && (
+                <Box sx={{ mb: 2 }}>
+                  <Typography variant="body2" color="text.secondary" sx={{ mb: 1 }}>
+                    Analyzing chest X-ray for pathologies...
+                  </Typography>
+                  <LinearProgress />
+                </Box>
+              )}
+              
+              {classificationResults.length > 0 && (
+                <>
+                  <Grid container spacing={1}>
+                    {classificationResults
+                      .filter(result => result.probability > 0.1) // Show only meaningful predictions
+                      .slice(0, 6) // Top 6 results
+                      .map((result) => (
+                        <Grid item xs={12} sm={6} md={4} key={result.label}>
+                          <Box sx={{ 
+                            p: 1.5, 
+                            border: 1, 
+                            borderColor: result.probability > 0.5 ? 'warning.main' : 'divider',
+                            borderRadius: 1,
+                            bgcolor: result.probability > 0.5 ? 'warning.light' : 'background.paper',
+                            transition: 'all 0.2s ease-in-out',
+                            '&:hover': {
+                              boxShadow: 2
+                            }
+                          }}>
+                            <Typography variant="body2" fontWeight="bold">
+                              {result.label}
+                            </Typography>
+                            <Typography variant="caption" color="text.secondary">
+                              Confidence: {(result.probability * 100).toFixed(1)}%
+                            </Typography>
+                            <LinearProgress 
+                              variant="determinate" 
+                              value={result.probability * 100}
+                              sx={{ 
+                                mt: 0.5, 
+                                height: 4,
+                                borderRadius: 2
+                              }}
+                              color={result.probability > 0.5 ? "warning" : "primary"}
+                            />
+                          </Box>
+                        </Grid>
+                      ))}
+                  </Grid>
+                  
+                  <Alert severity="info" sx={{ mt: 2 }}>
+                    <Typography variant="body2">
+                      💡 <strong>AI Analysis Complete:</strong> High confidence predictions (&gt;50%) are highlighted. 
+                      These are AI suggestions to assist diagnosis - please verify with clinical expertise.
+                    </Typography>
+                  </Alert>
+                </>
+              )}
+            </Paper>
+          </Grid>
+        )}
+
+        {/* Add this after your AI Classification Results section */}
+        {(gradCAMImage || generatingGradCAM || gradCAMError) && (
+          <Grid item xs={12}>
+            <Paper sx={{ p: 3, mt: 2 }}>
+              <Box sx={{ display: 'flex', alignItems: 'center', mb: 2 }}>
+                <Box sx={{ 
+                  width: 24, 
+                  height: 24, 
+                  background: 'linear-gradient(45deg, #ff0000, #ffff00)',
+                  borderRadius: '4px',
+                  mr: 1 
+                }} />
+                <Typography variant="h6" sx={{ flexGrow: 1 }}>
+                  Grad-CAM Visualization
+                </Typography>
+                {generatingGradCAM && <CircularProgress size={20} />}
+              </Box>
+              
+              {gradCAMError && (
+                <Alert severity="warning" sx={{ mb: 2 }}>
+                  {gradCAMError}
+                </Alert>
+              )}
+              
+              {generatingGradCAM && !gradCAMImage && (
+                <Box sx={{ textAlign: 'center', py: 4 }}>
+                  <CircularProgress size={40} />
+                  <Typography variant="body2" color="text.secondary" sx={{ mt: 2 }}>
+                    Generating attention heatmap...
+                  </Typography>
+                </Box>
+              )}
+              
+              {gradCAMImage && (
+                <Box sx={{ textAlign: 'center' }}>
+                  <Box sx={{ 
+                    display: 'inline-block',
+                    border: '2px solid',
+                    borderColor: 'divider',
+                    borderRadius: 2,
+                    overflow: 'hidden',
+                    boxShadow: 2
+                  }}>
+                    <img 
+                      src={gradCAMImage} 
+                      alt="Grad-CAM Heatmap Overlay"
+                      style={{ 
+                        maxWidth: '100%', 
+                        height: 'auto',
+                        display: 'block'
+                      }} 
+                    />
+                  </Box>
+                  <Typography variant="caption" display="block" sx={{ mt: 2, color: 'text.secondary' }}>
+                    🔥 <strong>Red/yellow areas</strong> indicate regions the AI focused on for the top prediction<br/>
+                    This helps understand what the model "sees" when making its diagnosis
+                  </Typography>
+                  
+                  {classificationResults.length > 0 && (
+                    <Alert severity="info" sx={{ mt: 2, textAlign: 'left' }}>
+                      <Typography variant="body2">
+                        <strong>Visualization for:</strong> {classificationResults[0].label} 
+                        ({(classificationResults[0].probability * 100).toFixed(1)}% confidence)
+                      </Typography>
+                    </Alert>
+                  )}
+                </Box>
+              )}
+            </Paper>
+          </Grid>
+        )}
         
         {/* Submit Button */}
         <Grid item xs={12}>

@@ -1,18 +1,6 @@
 import { useState, useEffect } from 'react';
 import { useParams, useNavigate } from 'react-router-dom';
-import {
-  Box,
-  Typography,
-  Paper,
-  Tabs,
-  Tab,
-  Alert,
-  Dialog,
-  DialogActions,
-  DialogContent,
-  DialogContentText,
-  DialogTitle,
-} from '@mui/material';
+import { Box, Typography, Paper, Tabs, Tab, Alert } from '@mui/material';
 import { getPatientById, deletePatient } from '../../services/PatientsService';
 import { getPatientCases, deleteCase } from '../../services/CasesService';
 import { Patient } from '../../types/Patient';
@@ -22,6 +10,8 @@ import CaseForm from '../../components/case/CaseForm';
 import PatientHistory from '../../components/patient/PatientHistory';
 import TabPanel from '../../components/common/TabPanel';
 import AppButton from '../../components/common/AppButton';
+import ConfirmationDialog from '../../components/common/ConfirmationDialog';
+
 import EditIcon from '@mui/icons-material/Edit';
 import DeleteIcon from '@mui/icons-material/Delete';
 
@@ -97,7 +87,6 @@ const PatientDetails = () => {
     }
   };
   
-  // Updated to use new URL structure
   const handleCaseSubmitSuccess = (caseId: string) => {
     navigate(`/patients/${id}/cases/${caseId}`);
   };
@@ -178,27 +167,13 @@ const PatientDetails = () => {
       </Paper>
       
       {/* Delete Confirmation Dialog */}
-      <Dialog
+      <ConfirmationDialog
         open={deleteDialogOpen}
-        onClose={() => setDeleteDialogOpen(false)}
-      >
-        <DialogTitle>
-          Confirm Deletion
-        </DialogTitle>
-        <DialogContent>
-          <DialogContentText>
-            Are you sure you want to delete {patient.firstName} {patient.lastName}? This action cannot be undone.
-          </DialogContentText>
-        </DialogContent>
-        <DialogActions>
-          <AppButton onClick={() => setDeleteDialogOpen(false)}>
-            Cancel
-          </AppButton>
-          <AppButton onClick={handleDeletePatient} color="error">
-            Delete
-          </AppButton>
-        </DialogActions>
-      </Dialog>
+        title="Confirm Deletion"
+        message={`Are you sure you want to delete ${patient?.firstName} ${patient?.lastName}?`}
+        onConfirm={handleDeletePatient}
+        onCancel={() => setDeleteDialogOpen(false)}
+      />
     </Box>
   );
 };
