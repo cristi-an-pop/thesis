@@ -14,6 +14,7 @@ import {
 import { ref, uploadBytes, getDownloadURL, deleteObject } from "firebase/storage";
 import { db, storage } from "../config/Firebase";
 import { XRayImage } from "../types/XRayImage";
+import { resizeImage } from "@/lib/utils";
 
 const convertXRayImage = (doc: any): XRayImage => {
     const data = doc.data();
@@ -82,11 +83,13 @@ export const addXRayImage = async (
     xrayData: Omit<XRayImage, 'id' | 'imageUrl' | 'thumbnailUrl' | 'uploadedAt'>
 ): Promise<string> => {
     try {
+        const resized = await resizeImage(file, 1024);
+
         const timestamp = Date.now();
         const filename = `${xrayData.patientId}_${xrayData.caseId}_${timestamp}.${file.name.split('.').pop()}`;
         const storageRef = ref(storage, `xrays/${filename}`);
         
-        await uploadBytes(storageRef, file);
+        await uploadBytes(storageRef, resized.resizedFile);
         
         const imageUrl = await getDownloadURL(storageRef);
         
@@ -95,8 +98,14 @@ export const addXRayImage = async (
             imageUrl,
             uploadedAt: serverTimestamp(),
             metadata: {
-                format: file.type,
-                sizeInBytes: file.size
+                width: resized.width,
+                height: resized.height,
+                format: resized.format,
+                sizeInBytes: resized.sizeInBytes,
+                originalWidth: 123,
+                originalHeight: 123,
+                originalFormat: file.type,
+                originalSizeInBytes: file.size
             }
         });
         

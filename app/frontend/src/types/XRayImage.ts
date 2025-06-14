@@ -11,5 +11,10 @@ export interface XRayImage {
         height?: number;
         format?: string;
         sizeInBytes?: number;
+        
+        originalWidth?: number;
+        originalHeight?: number;
+        originalFormat?: string;
+        originalSizeInBytes?: number;
     };
 }

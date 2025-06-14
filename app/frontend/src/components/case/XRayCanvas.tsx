@@ -2,21 +2,29 @@ import { useRef, useEffect, useState, useImperativeHandle, forwardRef } from 're
 import { Box, IconButton, Typography } from '@mui/material';
 import ZoomInIcon from '@mui/icons-material/ZoomIn';
 import ZoomOutIcon from '@mui/icons-material/ZoomOut';
-import ArrowBackIcon from '@mui/icons-material/ArrowBack';
+import RestartAltIcon from '@mui/icons-material/RestartAlt';
 import CropFreeIcon from '@mui/icons-material/CropFree';
 import CancelIcon from '@mui/icons-material/Cancel';
+import { BoundingBox } from '@/types/Case';
 
-export interface BoundingBox {
-  id: string;
-  x: number;
-  y: number;
-  width: number;
-  height: number;
-  noteId: string;
-}
+const ZOOM_LIMITS = { min: 0.25, max: 4, step: 0.25 };
+const MIN_BBOX_SIZE = 1;
+const OVERLAY_Z_INDEX = 10;
+
+const overlayButtonStyle = {
+  color: 'white', 
+  '&:hover': { bgcolor: 'rgba(255,255,255,0.1)' }
+};
+
+const overlayContainerStyle = {
+  position: 'absolute',
+  bgcolor: 'rgba(0,0,0,0.8)',
+  borderRadius: 2,
+  p: 0.5
+};
 
 export interface XRayCanvasRef {
-  resetZoom: () => void;
+  resetView: () => void;
   zoomIn: () => void;
   zoomOut: () => void;
   startDrawing: () => void;
@@ -25,221 +33,274 @@ export interface XRayCanvasRef {
 
 interface XRayCanvasProps {
   imageUrl?: string;
-  boundingBoxes: BoundingBox[];
+  boundingBoxes?: BoundingBox[];
   selectedBoundingBox?: BoundingBox | null;
-  onBoundingBoxCreated: (bbox: Omit<BoundingBox, 'id'>) => void;
-  onBoundingBoxSelected: (bbox: BoundingBox | null) => void;
+  onBoundingBoxCreated?: (bbox: BoundingBox) => void;
+  onBoundingBoxSelected?: (bbox: BoundingBox | null) => void;
   className?: string;
   style?: React.CSSProperties;
 }
 
-const XRayCanvas = forwardRef<XRayCanvasRef, XRayCanvasProps>(({ imageUrl, boundingBoxes = [], selectedBoundingBox = null, onBoundingBoxCreated, onBoundingBoxSelected, className, style }, ref) => {
-  const canvasRef = useRef<HTMLCanvasElement>(null);
+const XRayCanvas = forwardRef<XRayCanvasRef, XRayCanvasProps>(({ 
+  imageUrl, 
+  boundingBoxes = [],
+  selectedBoundingBox = null,
+  onBoundingBoxCreated,
+  onBoundingBoxSelected,
+  className, 
+  style 
+}, ref) => {
   const containerRef = useRef<HTMLDivElement>(null);
+  const imageRef = useRef<HTMLImageElement>(null);
   
   const [zoomLevel, setZoomLevel] = useState(1);
+  const [panOffset, setPanOffset] = useState({ x: 0, y: 0 });
+  const [isDragging, setIsDragging] = useState(false);
+  const [dragStart, setDragStart] = useState({ x: 0, y: 0 });
+  
+  // Bounding box drawing state
   const [isDrawingBBox, setIsDrawingBBox] = useState(false);
-  const [startPoint, setStartPoint] = useState<{x: number, y: number} | null>(null);
-  const [currentBBox, setCurrentBBox] = useState<{x: number, y: number, width: number, height: number} | null>(null);
+  const [bboxStart, setBboxStart] = useState<{ x: number, y: number } | null>(null);
+  const [currentBBox, setCurrentBBox] = useState<BoundingBox | null>(null);
 
+  // Combined zoom handler
+  const handleZoom = (direction: 'in' | 'out') => {
+    setZoomLevel(prev => direction === 'in' 
+      ? Math.min(prev + ZOOM_LIMITS.step, ZOOM_LIMITS.max) 
+      : Math.max(prev - ZOOM_LIMITS.step, ZOOM_LIMITS.min)
+    );
+  };
+
+  const resetState = () => {
+    setIsDrawingBBox(false);
+    setBboxStart(null);
+    setCurrentBBox(null);
+  };
+
+  // Expose methods to parent
   useImperativeHandle(ref, () => ({
-    resetZoom: () => setZoomLevel(1),
-    zoomIn: () => setZoomLevel(prev => Math.min(prev + 0.25, 3)),
-    zoomOut: () => setZoomLevel(prev => Math.max(prev - 0.25, 0.5)),
+    resetView: () => {
+      setZoomLevel(1);
+      setPanOffset({ x: 0, y: 0 });
+    },
+    zoomIn: () => handleZoom('in'),
+    zoomOut: () => handleZoom('out'),
     startDrawing: () => setIsDrawingBBox(true),
-    cancelDrawing: () => {
-      setIsDrawingBBox(false);
-      setStartPoint(null);
-      setCurrentBBox(null);
-    }
+    cancelDrawing: resetState
   }));
 
+  // Draw overlay with bounding boxes
   useEffect(() => {
-    if (!canvasRef.current || !imageUrl) return;
+    if (!containerRef.current || !imageRef.current) return;
     
-    const canvas = canvasRef.current;
+    const canvas = document.createElement('canvas');
     const ctx = canvas.getContext('2d');
     if (!ctx) return;
     
-    const image = new Image();
-    image.crossOrigin = 'anonymous';
-    image.src = imageUrl;
+    const container = containerRef.current;
+    const image = imageRef.current;
     
-    image.onload = () => {
-      const container = containerRef.current;
-      if (container) {
-        canvas.width = container.clientWidth;
-        canvas.height = container.clientHeight;
-      }
-      
-      ctx.clearRect(0, 0, canvas.width, canvas.height);
-      
-      const imgRatio = image.width / image.height;
-      const canvasRatio = canvas.width / canvas.height;
-      
-      let drawWidth, drawHeight, offsetX = 0, offsetY = 0;
-      
-      if (canvasRatio > imgRatio) {
-        drawHeight = canvas.height * zoomLevel;
-        drawWidth = image.width * (drawHeight / image.height);
-        offsetX = (canvas.width - drawWidth) / 2;
-      } else {
-        drawWidth = canvas.width * zoomLevel;
-        drawHeight = image.height * (drawWidth / image.width);
-        offsetY = (canvas.height - drawHeight) / 2;
-      }
-      
-      ctx.drawImage(image, offsetX, offsetY, drawWidth, drawHeight);
-      
-      boundingBoxes.forEach(bbox => {
-        const isSelected = selectedBoundingBox && selectedBoundingBox.id === bbox.id;
-        
-        ctx.strokeStyle = isSelected ? '#ff0000' : '#00ff00';
-        ctx.lineWidth = 2;
-        ctx.setLineDash(isSelected ? [] : [5, 5]);
-        
-        const x = (bbox.x * drawWidth / 100) + offsetX;
-        const y = (bbox.y * drawHeight / 100) + offsetY;
-        const width = (bbox.width * drawWidth / 100);
-        const height = (bbox.height * drawHeight / 100);
-        
-        ctx.strokeRect(x, y, width, height);
-        ctx.setLineDash([]);
-      });
-      
-      if (isDrawingBBox && currentBBox) {
-        ctx.strokeStyle = '#ff9900';
-        ctx.lineWidth = 2;
-        ctx.setLineDash([5, 5]);
-        ctx.strokeRect(currentBBox.x, currentBBox.y, currentBBox.width, currentBBox.height);
-        ctx.setLineDash([]);
-      }
-    };
-
-    image.onerror = () => {
-      console.error('Failed to load X-ray image');
-    };
-  }, [imageUrl, zoomLevel, boundingBoxes, selectedBoundingBox, isDrawingBBox, currentBBox]);
-
-  const handleMouseDown = (e: React.MouseEvent<HTMLCanvasElement>) => {
-    if (!isDrawingBBox) return;
+    // Remove existing overlay
+    const existingOverlay = container.querySelector('.bbox-overlay');
+    existingOverlay?.remove();
     
-    const canvas = canvasRef.current;
-    if (!canvas) return;
-    
-    const rect = canvas.getBoundingClientRect();
-    const x = e.clientX - rect.left;
-    const y = e.clientY - rect.top;
-    
-    setStartPoint({ x, y });
-    setCurrentBBox({ x, y, width: 0, height: 0 });
-  };
-  
-  const handleMouseMove = (e: React.MouseEvent<HTMLCanvasElement>) => {
-    if (!isDrawingBBox || !startPoint || !currentBBox) return;
-    
-    const canvas = canvasRef.current;
-    if (!canvas) return;
-    
-    const rect = canvas.getBoundingClientRect();
-    const x = e.clientX - rect.left;
-    const y = e.clientY - rect.top;
-    
-    setCurrentBBox({
-      x: startPoint.x,
-      y: startPoint.y,
-      width: x - startPoint.x,
-      height: y - startPoint.y
+    // Set up canvas overlay
+    Object.assign(canvas, {
+      className: 'bbox-overlay',
+      width: container.clientWidth,
+      height: container.clientHeight
     });
-  };
-  
-  const handleMouseUp = () => {
-    if (!isDrawingBBox || !startPoint || !currentBBox) return;
     
-    if (Math.abs(currentBBox.width) > 10 && Math.abs(currentBBox.height) > 10) {
-      const normalizedBBox = {
-        x: currentBBox.width < 0 ? startPoint!.x + currentBBox.width : startPoint!.x,
-        y: currentBBox.height < 0 ? startPoint!.y + currentBBox.height : startPoint!.y,
-        width: Math.abs(currentBBox.width),
-        height: Math.abs(currentBBox.height)
-      };
+    Object.assign(canvas.style, {
+      position: 'absolute',
+      top: '0',
+      left: '0',
+      pointerEvents: 'none',
+      zIndex: OVERLAY_Z_INDEX.toString()
+    });
+    
+    container.appendChild(canvas);
+    
+    // Get image dimensions and position
+    const imageRect = image.getBoundingClientRect();
+    const containerRect = container.getBoundingClientRect();
+    
+    const imageX = imageRect.left - containerRect.left;
+    const imageY = imageRect.top - containerRect.top;
+    const imageWidth = imageRect.width;
+    const imageHeight = imageRect.height;
+    
+    // Helper function to draw bounding box
+    const drawBBox = (bbox: BoundingBox, color: string, dashed: boolean = false) => {
+      ctx.strokeStyle = color;
+      ctx.lineWidth = 2;
+      ctx.setLineDash(dashed ? [5, 5] : []);
       
-      const canvas = canvasRef.current!;
-      const newBBox = {
-        x: (normalizedBBox.x / canvas.width) * 100,
-        y: (normalizedBBox.y / canvas.height) * 100,
-        width: (normalizedBBox.width / canvas.width) * 100,
-        height: (normalizedBBox.height / canvas.height) * 100,
-        noteId: `temp-${Date.now()}`
-      };
+      const x = imageX + (bbox.x / 100) * imageWidth;
+      const y = imageY + (bbox.y / 100) * imageHeight;
+      const width = (bbox.width / 100) * imageWidth;
+      const height = (bbox.height / 100) * imageHeight;
       
-      onBoundingBoxCreated(newBBox);
+      ctx.strokeRect(x, y, width, height);
+    };
+    
+    // Draw existing bounding boxes
+    boundingBoxes.forEach(bbox => {
+      const isSelected = selectedBoundingBox && 
+        bbox.x === selectedBoundingBox.x && 
+        bbox.y === selectedBoundingBox.y &&
+        bbox.width === selectedBoundingBox.width && 
+        bbox.height === selectedBoundingBox.height;
       
-      setIsDrawingBBox(false);
+      drawBBox(bbox, isSelected ? '#ff0000' : '#00ff00', !isSelected);
+    });
+    
+    // Draw current bounding box being created
+    if (isDrawingBBox && currentBBox) {
+      drawBBox(currentBBox, '#ff9900', true);
     }
     
-    setStartPoint(null);
-    setCurrentBBox(null);
-  };
-  
-  const handleClick = (e: React.MouseEvent<HTMLCanvasElement>) => {
-    if (isDrawingBBox) return;
+    ctx.setLineDash([]);
     
-    const canvas = canvasRef.current;
-    if (!canvas) return;
+  }, [boundingBoxes, selectedBoundingBox, isDrawingBBox, currentBBox, zoomLevel, panOffset]);
+
+  // Convert screen coordinates to image percentage coordinates
+  const screenToImageCoords = (screenX: number, screenY: number) => {
+    if (!imageRef.current || !containerRef.current) return null;
     
-    const rect = canvas.getBoundingClientRect();
-    const x = e.clientX - rect.left;
-    const y = e.clientY - rect.top;
+    const imageRect = imageRef.current.getBoundingClientRect();
+    const containerRect = containerRef.current.getBoundingClientRect();
     
-    for (const bbox of boundingBoxes) {
-      const bboxX = (bbox.x * canvas.width / 100);
-      const bboxY = (bbox.y * canvas.height / 100);
-      const bboxWidth = (bbox.width * canvas.width / 100);
-      const bboxHeight = (bbox.height * canvas.height / 100);
-      
-      if (
-        x >= bboxX && 
-        x <= bboxX + bboxWidth && 
-        y >= bboxY && 
-        y <= bboxY + bboxHeight
-      ) {
-        onBoundingBoxSelected(bbox);
-        return;
-      }
+    const imageX = imageRect.left - containerRect.left;
+    const imageY = imageRect.top - containerRect.top;
+    const imageWidth = imageRect.width;
+    const imageHeight = imageRect.height;
+    
+    // Check if click is within image bounds
+    if (screenX < imageX || screenX > imageX + imageWidth || 
+        screenY < imageY || screenY > imageY + imageHeight) {
+      return null;
     }
     
-    onBoundingBoxSelected(null);
+    // Convert to percentage coordinates relative to image
+    const x = ((screenX - imageX) / imageWidth) * 100;
+    const y = ((screenY - imageY) / imageHeight) * 100;
+    
+    return { x, y };
   };
 
-  const handleZoomIn = () => {
-    setZoomLevel(prev => Math.min(prev + 0.25, 3));
+  const handleMouseDown = (e: React.MouseEvent) => {
+    const rect = containerRef.current!.getBoundingClientRect();
+    const screenX = e.clientX - rect.left;
+    const screenY = e.clientY - rect.top;
+    
+    if (isDrawingBBox) {
+      // Start drawing bounding box
+      const imageCoords = screenToImageCoords(screenX, screenY);
+      if (imageCoords) {
+        setBboxStart(imageCoords);
+        setCurrentBBox({
+          x: imageCoords.x,
+          y: imageCoords.y,
+          width: 0,
+          height: 0
+        });
+      }
+    } else {
+      // Check if clicking on existing bounding box
+      const imageCoords = screenToImageCoords(screenX, screenY);
+      if (imageCoords && onBoundingBoxSelected) {
+        const clickedBBox = boundingBoxes.find(bbox => 
+          imageCoords.x >= bbox.x && 
+          imageCoords.x <= bbox.x + bbox.width &&
+          imageCoords.y >= bbox.y && 
+          imageCoords.y <= bbox.y + bbox.height
+        );
+        
+        onBoundingBoxSelected(clickedBBox || null);
+      }
+      
+      // Start panning
+      setIsDragging(true);
+      setDragStart({
+        x: e.clientX - panOffset.x,
+        y: e.clientY - panOffset.y
+      });
+    }
   };
-  
-  const handleZoomOut = () => {
-    setZoomLevel(prev => Math.max(prev - 0.25, 0.5));
+
+  const handleMouseMove = (e: React.MouseEvent) => {
+    const rect = containerRef.current!.getBoundingClientRect();
+    const screenX = e.clientX - rect.left;
+    const screenY = e.clientY - rect.top;
+    
+    if (isDrawingBBox && bboxStart) {
+      // Update current bounding box
+      const imageCoords = screenToImageCoords(screenX, screenY);
+      if (imageCoords) {
+        const width = imageCoords.x - bboxStart.x;
+        const height = imageCoords.y - bboxStart.y;
+        
+        setCurrentBBox({
+          x: width < 0 ? bboxStart.x + width : bboxStart.x,
+          y: height < 0 ? bboxStart.y + height : bboxStart.y,
+          width: Math.abs(width),
+          height: Math.abs(height)
+        });
+      }
+    } else if (isDragging && !isDrawingBBox) {
+      // Pan the image
+      setPanOffset({
+        x: e.clientX - dragStart.x,
+        y: e.clientY - dragStart.y
+      });
+    }
   };
-  
-  const handleResetZoom = () => {
-    setZoomLevel(1);
+
+  const handleMouseUp = () => {
+    if (isDrawingBBox && currentBBox && bboxStart) {
+      // Finish drawing bounding box
+      if (currentBBox.width > MIN_BBOX_SIZE && currentBBox.height > MIN_BBOX_SIZE) {
+        onBoundingBoxCreated?.(currentBBox);
+      }
+      resetState();
+    } else {
+      setIsDragging(false);
+    }
   };
-  
-  const handleStartDrawing = () => {
-    setIsDrawingBBox(true);
+
+  const handleWheel = (e: React.WheelEvent) => {
+    e.preventDefault();
+    handleZoom(e.deltaY < 0 ? 'in' : 'out');
   };
-  
-  const handleCancelDrawing = () => {
-    setIsDrawingBBox(false);
-    setStartPoint(null);
-    setCurrentBBox(null);
-  };
+
+  // Control definitions
+  const zoomControls = [
+    { 
+      icon: ZoomInIcon, 
+      action: () => handleZoom('in'), 
+      disabled: zoomLevel >= ZOOM_LIMITS.max 
+    },
+    { 
+      icon: ZoomOutIcon, 
+      action: () => handleZoom('out'), 
+      disabled: zoomLevel <= ZOOM_LIMITS.min 
+    },
+    { 
+      icon: RestartAltIcon, 
+      action: () => {
+        setZoomLevel(1);
+        setPanOffset({ x: 0, y: 0 });
+      }, 
+      disabled: zoomLevel === 1 && panOffset.x === 0 && panOffset.y === 0 
+    }
+  ];
 
   if (!imageUrl) {
     return (
       <Box
         ref={containerRef}
         className={className}
-        style={style}
         sx={{
           display: 'flex',
           alignItems: 'center',
@@ -247,12 +308,11 @@ const XRayCanvas = forwardRef<XRayCanvasRef, XRayCanvasProps>(({ imageUrl, bound
           bgcolor: 'grey.900',
           color: 'white',
           minHeight: 400,
+          borderRadius: 1,
           ...style
         }}
       >
-        <Typography variant="h6" color="inherit">
-          No X-Ray Image Available
-        </Typography>
+        No X-Ray Image Available
       </Box>
     );
   }
@@ -263,100 +323,107 @@ const XRayCanvas = forwardRef<XRayCanvasRef, XRayCanvasProps>(({ imageUrl, bound
       className={className}
       sx={{
         position: 'relative',
-        cursor: isDrawingBBox ? 'crosshair' : 'default',
+        cursor: isDrawingBBox ? 'crosshair' : isDragging ? 'grabbing' : 'grab',
         bgcolor: 'black',
         overflow: 'hidden',
+        borderRadius: 1,
         ...style
       }}
+      onMouseDown={handleMouseDown}
+      onMouseMove={handleMouseMove}
+      onMouseUp={handleMouseUp}
+      onMouseLeave={() => setIsDragging(false)}
+      onWheel={handleWheel}
     >
-      <canvas
-        ref={canvasRef}
-        onMouseDown={handleMouseDown}
-        onMouseMove={handleMouseMove}
-        onMouseUp={handleMouseUp}
-        onClick={handleClick}
-        style={{ display: 'block', width: '100%', height: '100%' }}
+      <img
+        ref={imageRef}
+        src={imageUrl}
+        alt="X-Ray"
+        style={{
+          display: 'block',
+          maxWidth: 'none',
+          maxHeight: 'none',
+          width: 'auto',
+          height: '100%',
+          objectFit: 'contain',
+          transform: `scale(${zoomLevel}) translate(${panOffset.x / zoomLevel}px, ${panOffset.y / zoomLevel}px)`,
+          transformOrigin: 'center center',
+          userSelect: 'none',
+          pointerEvents: 'none'
+        }}
+        onError={() => console.error('Failed to load X-ray image')}
+        onLoad={() => console.log('X-ray image loaded successfully')}
       />
       
-      {/* Canvas controls */}
+      {/* Zoom Controls */}
       <Box sx={{ 
-        position: 'absolute', 
-        bottom: 8, 
-        right: 8, 
-        bgcolor: 'rgba(0,0,0,0.7)',
-        borderRadius: 1,
-        p: 0.5,
-        display: 'flex'
+        ...overlayContainerStyle,
+        bottom: 16, 
+        right: 16, 
+        display: 'flex',
+        flexDirection: 'column',
+        gap: 0.5
       }}>
-        <IconButton 
-          size="small" 
-          onClick={handleZoomIn}
-          sx={{ color: 'white' }}
-          disabled={zoomLevel >= 3}
-        >
-          <ZoomInIcon fontSize="small" />
-        </IconButton>
-        <IconButton 
-          size="small" 
-          onClick={handleZoomOut}
-          sx={{ color: 'white' }}
-          disabled={zoomLevel <= 0.5}
-        >
-          <ZoomOutIcon fontSize="small" />
-        </IconButton>
-        <IconButton 
-          size="small" 
-          onClick={handleResetZoom}
-          sx={{ color: 'white' }}
-          disabled={zoomLevel === 1}
-        >
-          <ArrowBackIcon fontSize="small" sx={{ transform: 'rotate(45deg)' }} />
-        </IconButton>
+        {zoomControls.map(({ icon: Icon, action, disabled }, index) => (
+          <IconButton 
+            key={index}
+            size="small" 
+            onClick={action}
+            sx={overlayButtonStyle}
+            disabled={disabled}
+          >
+            <Icon fontSize="small" />
+          </IconButton>
+        ))}
       </Box>
       
-      {/* Bounding box controls */}
+      {/* Bounding Box Controls */}
       <Box sx={{ 
-        position: 'absolute', 
-        top: 8, 
-        right: 8, 
-        bgcolor: 'rgba(0,0,0,0.7)',
-        borderRadius: 1,
-        p: 0.5,
-        display: 'flex'
+        ...overlayContainerStyle,
+        top: 16, 
+        right: 16, 
+        display: 'flex',
+        alignItems: 'center',
+        gap: 1
       }}>
         {isDrawingBBox ? (
-          <IconButton 
-            size="small" 
-            onClick={handleCancelDrawing}
-            sx={{ color: 'white' }}
-          >
-            <CancelIcon fontSize="small" />
-          </IconButton>
+          <>
+            <Typography variant="caption" sx={{ color: 'white', px: 1 }}>
+              Drawing Mode
+            </Typography>
+            <IconButton 
+              size="small" 
+              onClick={resetState}
+              sx={overlayButtonStyle}
+            >
+              <CancelIcon fontSize="small" />
+            </IconButton>
+          </>
         ) : (
           <IconButton 
             size="small" 
-            onClick={handleStartDrawing}
-            sx={{ color: 'white' }}
+            onClick={() => setIsDrawingBBox(true)}
+            sx={overlayButtonStyle}
           >
             <CropFreeIcon fontSize="small" />
           </IconButton>
         )}
       </Box>
       
-      {/* Drawing instruction */}
-      {isDrawingBBox && (
+      {/* Zoom Level Indicator */}
+      {zoomLevel !== 1 && (
         <Box sx={{
           position: 'absolute',
-          top: 8,
-          left: 8,
-          bgcolor: 'rgba(0,0,0,0.7)',
+          top: 16,
+          left: 16,
+          bgcolor: 'rgba(0,0,0,0.8)',
           borderRadius: 1,
-          p: 1,
-          color: 'white'
+          px: 1,
+          py: 0.5,
+          color: 'white',
+          fontSize: '0.75rem'
         }}>
-          <Typography variant="caption">
-            Click and drag to create an annotation area
-          </Typography>
+          {Math.round(zoomLevel * 100)}%
         </Box>
       )}
     </Box>

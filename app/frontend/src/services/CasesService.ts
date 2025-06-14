@@ -23,9 +23,7 @@ const convertCase = (doc: any): Case => {
         title: data.title || "",
         description: data.description || "",
         diagnosis: data.diagnosis || "",
-        treatmentPlan: data.treatmentPlan || "",
         notes: data.notes || [],
-        boundingBoxes: data.boundingBoxes || [],
         createdAt: data.createdAt ? data.createdAt.toDate() : undefined,
         updatedAt: data.updatedAt ? data.updatedAt.toDate() : undefined
     };
@@ -79,6 +77,7 @@ export const addCase = async (caseData: Omit<Case, 'id'>): Promise<string> => {
     try {
         const docRef = await addDoc(collection(db, "cases"), {
             ...caseData,
+            diagnosis: caseData.diagnosis || [],
             createdAt: serverTimestamp(),
             updatedAt: serverTimestamp()
         });
@@ -112,3 +111,19 @@ export const deleteCase = async (id: string): Promise<void> => {
         throw new Error("Failed to delete case");
     }
 };
+
+// Get all cases
+export const getAllCases = async (): Promise<Case[]> => {
+    try {
+        const q = query(
+            collection(db, "cases"), 
+            orderBy("createdAt", "desc")
+        );
+        const querySnapshot = await getDocs(q);
+        
+        return querySnapshot.docs.map(convertCase);
+    } catch (error) {
+        console.error("Error fetching all cases:", error);
+        throw new Error("Failed to fetch cases");
+    }
+}

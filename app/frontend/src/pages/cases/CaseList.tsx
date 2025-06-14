@@ -113,7 +113,7 @@ const CaseList = () => {
     {
       id: 'diagnosis',
       header: 'Diagnosis',
-      cell: (row) => row.diagnosis || '-',
+        cell: (row) => row.diagnosis?.map(d => d.name).join(', ') || '-',
       sortable: true,
     },
     {

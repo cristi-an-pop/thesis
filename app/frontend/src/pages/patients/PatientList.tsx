@@ -13,12 +13,17 @@ import { DataTable, ColumnDef } from '../../components/common/DataTable';
 import AddIcon from '@mui/icons-material/Add';
 import EditIcon from '@mui/icons-material/Edit';
 import VisibilityIcon from '@mui/icons-material/Visibility';
+import DownloadIcon from '@mui/icons-material/Download';
+import ExportService from '@/services/ExportService';
 
 const PatientList = () => {
   const navigate = useNavigate();
   const [patients, setPatients] = useState<Patient[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | undefined>(undefined);
+  const [exporting, setExporting] = useState(false);
+  const [exportMenuAnchor, setExportMenuAnchor] = useState<null | HTMLElement>(null);
+
 
   useEffect(() => {
     const fetchPatients = async () => {
@@ -63,6 +68,20 @@ const PatientList = () => {
 
   const handleAddPatient = () => {
     navigate('/patients/new');
+  };
+
+  const handleExportTrainingData = async () => {
+    try {
+      setExporting(true);
+      setExportMenuAnchor(null);
+      
+      await ExportService.exportTrainingData();
+    } catch (error) {
+      console.error('Export failed:', error);
+      alert('Export failed. Please try again.');
+    } finally {
+      setExporting(false);
+    }
   };
 
 
@@ -121,14 +140,24 @@ const PatientList = () => {
         <Typography variant="h4" component="h1" fontWeight="bold">
           Patients
         </Typography>
-        <Button
-          variant="contained"
-          color="primary"
-          startIcon={<AddIcon />}
-          onClick={handleAddPatient}
-        >
-          Add Patient
-        </Button>
+        <Box sx={{ display: 'flex', gap: 1 }}>
+          <Button
+            variant="outlined"
+            startIcon={<DownloadIcon />}
+            onClick={handleExportTrainingData}
+            disabled={exporting || loading}
+          >
+            Export Data
+          </Button>
+          <Button
+            variant="contained"
+            color="primary"
+            startIcon={<AddIcon />}
+            onClick={handleAddPatient}
+          >
+            Add Patient
+          </Button>
+        </Box>
       </Box>
 
       <DataTable

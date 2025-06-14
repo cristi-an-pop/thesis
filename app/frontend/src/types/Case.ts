@@ -1,18 +1,22 @@
 export interface Note {
     id: string;
     text: string;
-    diagnosis?: string;
     createdAt: Date;
     updatedAt?: Date;
 }
 
 export interface BoundingBox {
-    id: string;
     x: number;
     y: number;
     width: number;
     height: number;
-    noteId: string;
+}
+
+export interface Diagnosis {
+    name: string;
+    confidence: number;
+    boundingBox?: BoundingBox;
+    gradcamData?: string; // Base64 encoded image data for Grad-CAM visualization
 }
 
 export interface Case {
@@ -20,10 +24,8 @@ export interface Case {
     patientId: string;
     title: string;
     description?: string;
-    diagnosis?: string;
-    treatmentPlan?: string;
+    diagnosis?: Diagnosis[];
+    notes?: Note[];
     createdAt?: Date;
     updatedAt?: Date;
-    notes?: Note[];
-    boundingBoxes?: BoundingBox[];
 }
