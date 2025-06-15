@@ -1,26 +1,11 @@
 import React, { useState, useMemo } from 'react';
-import {
-  Box,
-  Paper,
-  Table,
-  TableBody,
-  TableCell,
-  TableContainer,
-  TableHead,
-  TablePagination,
-  TableRow,
-  TableSortLabel,
-  TextField,
-  InputAdornment,
-  Typography,
-  CircularProgress,
-} from '@mui/material';
+import { Box, Paper, Table, TableBody, TableCell, TableContainer, TableHead, TablePagination, TableRow, TableSortLabel, TextField, InputAdornment, Typography, CircularProgress } from '@mui/material';
 import SearchIcon from '@mui/icons-material/Search';
 
 export interface ColumnDef<T> {
-  id: keyof T | string; // Unique identifier for the column
-  header: string;       // The column header text
-  cell?: (row: T) => React.ReactNode; // Optional custom cell renderer
+  id: keyof T | string;
+  header: string;
+  cell?: (row: T) => React.ReactNode;
   sortable?: boolean;
   minWidth?: number;
   maxWidth?: number;
@@ -33,30 +18,30 @@ export interface DataTableProps<T> {
   columns: ColumnDef<T>[];
   getRowId: (row: T) => string;
   
-  onRowClick?: (row: T) => void;   // Handler for row clicks
-  loading?: boolean;               // Loading state
-  error?: string;                  // Error message
+  onRowClick?: (row: T) => void; 
+  loading?: boolean;
+  error?: string;
   
-  pagination?: boolean;            // Whether to enable pagination
-  pageSize?: number;               // Items per page
-  pageSizeOptions?: number[];      // Available page size options
+  pagination?: boolean;
+  pageSize?: number;
+  pageSizeOptions?: number[];
   
   // Sorting
-  defaultSortColumn?: keyof T | string; // Default column to sort by
-  defaultSortDirection?: 'asc' | 'desc'; // Default sort direction
+  defaultSortColumn?: keyof T | string;
+  defaultSortDirection?: 'asc' | 'desc';
   
   // Search
-  searchable?: boolean;            // Whether to enable searching
-  searchPlaceholder?: string;      // Placeholder for search input
-  onSearch?: (term: string) => void; // Custom search handler
-  searchBy?: (row: T, term: string) => boolean; // Custom search function
+  searchable?: boolean;
+  searchPlaceholder?: string;
+  onSearch?: (term: string) => void;
+  searchBy?: (row: T, term: string) => boolean;
   
   // Empty state
-  emptyMessage?: string;           // Message to display when no data
+  emptyMessage?: string;
   
   // Styling
-  paperProps?: React.ComponentProps<typeof Paper>; // Props for the Paper component
-  tableProps?: React.ComponentProps<typeof Table>; // Props for the Table component
+  paperProps?: React.ComponentProps<typeof Paper>;
+  tableProps?: React.ComponentProps<typeof Table>;
 }
 
 export function DataTable<T extends object>({
@@ -122,7 +107,6 @@ export function DataTable<T extends object>({
           return searchBy(row, searchTerm);
         }
 
-        // Default search behavior: check if any visible column contains the search term
         return columns.some(column => {
           const columnId = column.id as keyof T;
           const cellValue = row[columnId];
@@ -225,8 +209,6 @@ export function DataTable<T extends object>({
         >
           {columns.map(column => {
             const { id, cell, align } = column;
-            
-            // Use custom cell renderer if provided
             if (cell) {
               return (
                 <TableCell key={`${rowId}-${String(id)}`} align={align || 'left'}>
@@ -235,7 +217,6 @@ export function DataTable<T extends object>({
               );
             }
             
-            // Otherwise render value directly
             const value = row[id as keyof T];
             return (
               <TableCell key={`${rowId}-${String(id)}`} align={align || 'left'}>
@@ -306,15 +287,7 @@ export function DataTable<T extends object>({
       </TableContainer>
       
       {pagination && (
-        <TablePagination
-          rowsPerPageOptions={pageSizeOptions}
-          component="div"
-          count={processedData.length}
-          rowsPerPage={rowsPerPage}
-          page={page}
-          onPageChange={handleChangePage}
-          onRowsPerPageChange={handleChangeRowsPerPage}
-        />
+        <TablePagination rowsPerPageOptions={pageSizeOptions} component="div" count={processedData.length} rowsPerPage={rowsPerPage} page={page} onPageChange={handleChangePage} onRowsPerPageChange={handleChangeRowsPerPage} />
       )}
     </Paper>
   );

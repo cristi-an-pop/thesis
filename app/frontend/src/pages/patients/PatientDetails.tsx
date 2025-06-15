@@ -1,6 +1,6 @@
 import { useState, useEffect } from 'react';
 import { useParams, useNavigate } from 'react-router-dom';
-import { Box, Typography, Paper, Tabs, Tab, Alert } from '@mui/material';
+import { Box, Typography, Paper, Tabs, Tab } from '@mui/material';
 import { getPatientById, deletePatient } from '../../services/PatientsService';
 import { getPatientCases, deleteCase } from '../../services/CasesService';
 import { Patient } from '../../types/Patient';
@@ -11,6 +11,9 @@ import PatientHistory from '../../components/patient/PatientHistory';
 import TabPanel from '../../components/common/TabPanel';
 import AppButton from '../../components/common/AppButton';
 import ConfirmationDialog from '../../components/common/ConfirmationDialog';
+import Loading from '../../components/common/Loading';
+import Error from '../../components/common/Error';
+import { handleError } from '../../lib/ErrorHandler';
 
 import EditIcon from '@mui/icons-material/Edit';
 import DeleteIcon from '@mui/icons-material/Delete';
@@ -23,37 +26,42 @@ const PatientDetails = () => {
   const [cases, setCases] = useState<Case[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
+  const [deleting, setDeleting] = useState(false);
   const [deleteDialogOpen, setDeleteDialogOpen] = useState(false);
   const [tabValue, setTabValue] = useState(0);
   
-  useEffect(() => {
-    const fetchPatientData = async () => {
-      if (!id) return;
+  const fetchPatientData = async () => {
+    if (!id) return;
+    
+    try {
+      setLoading(true);
+      setError(null);
+      
+      const patientData = await getPatientById(id);
+      if (!patientData) {
+        setError('Patient not found');
+        return;
+      }
+      
+      setPatient(patientData);
       
       try {
-        setLoading(true);
-        setError(null);
-        
-        const patientData = await getPatientById(id);
-        setPatient(patientData);
-        
-        if (patientData) {
-          try {
-            const casesData = await getPatientCases(id);
-            setCases(casesData || []);
-          } catch (caseError) {
-            console.warn("Could not load cases, displaying empty cases list", caseError);
-            setCases([]);
-          }
-        }
-      } catch (err) {
-        console.error('Error fetching patient data:', err);
-        setError('Failed to load patient information');
-      } finally {
-        setLoading(false);
+        const casesData = await getPatientCases(id);
+        setCases(casesData || []);
+      } catch (caseError) {
+        handleError(caseError, 'Failed to load patient cases');
+        setCases([]);
       }
-    };
-    
+      
+    } catch (err) {
+      handleError(err, 'Failed to load patient');
+      setError('Failed to load patient');
+    } finally {
+      setLoading(false);
+    }
+  };
+  
+  useEffect(() => {
     fetchPatientData();
   }, [id]);
   
@@ -65,12 +73,13 @@ const PatientDetails = () => {
     if (!id) return;
     
     try {
+      setDeleting(true);
       await deletePatient(id);
       navigate('/patients');
     } catch (err) {
-      console.error('Error deleting patient:', err);
-      setError('Failed to delete patient');
+      handleError(err, 'Failed to delete patient');
     } finally {
+      setDeleting(false);
       setDeleteDialogOpen(false);
     }
   };
@@ -78,11 +87,9 @@ const PatientDetails = () => {
   const handleDeleteCase = async (caseId: string) => {
     try {
       await deleteCase(caseId);
-      
       setCases(prevCases => prevCases.filter(c => c.id !== caseId));
-      
     } catch (error) {
-      console.error('Error deleting case:', error);
+      handleError(error, 'Failed to delete case');
       throw error;
     }
   };
@@ -91,17 +98,9 @@ const PatientDetails = () => {
     navigate(`/patients/${id}/cases/${caseId}`);
   };
   
-  if (loading) {
-    return <Box>Loading patient details...</Box>;
-  }
-  
-  if (error || !patient) {
-    return (
-      <Box>
-        <Alert severity="error">{error || 'Patient not found'}</Alert>
-      </Box>
-    );
-  }
+  if (error) return <Error message={error} onRetry={fetchPatientData} />;
+  if (loading) return <Loading message="Loading patient details..." type="skeleton" />;
+  if (!patient) return <Error message="Patient not found" onRetry={() => navigate('/patients')} />;
   
   return (
     <Box>
@@ -125,6 +124,7 @@ const PatientDetails = () => {
             color="error"
             startIcon={<DeleteIcon />}
             onClick={() => setDeleteDialogOpen(true)}
+            loading={deleting}
           >
             Delete
           </AppButton>
@@ -173,6 +173,7 @@ const PatientDetails = () => {
         message={`Are you sure you want to delete ${patient?.firstName} ${patient?.lastName}?`}
         onConfirm={handleDeletePatient}
         onCancel={() => setDeleteDialogOpen(false)}
+        loading={deleting}
       />
     </Box>
   );

@@ -1,11 +1,5 @@
 import React, {useState, useRef} from 'react';
-import {
-    Box,
-    Typography,
-    Button,
-    Paper,
-    Alert,
-} from '@mui/material';
+import {Box, Typography, Button, Paper, Alert} from '@mui/material';
 import CloudUploadIcon from '@mui/icons-material/CloudUpload';
 import AttachFileIcon from '@mui/icons-material/AttachFile';
 import CloseIcon from '@mui/icons-material/Close';

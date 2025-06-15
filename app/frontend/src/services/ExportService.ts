@@ -1,6 +1,8 @@
 import { getPatients } from './PatientsService';
 import { getPatientCases } from './CasesService';
 import { getPatientXRayImages } from './XRayService';
+import { Patient } from '../types/Patient';
+import { throwError, handleError } from '../lib/ErrorHandler';
 
 interface BBoxData {
   id: string;
@@ -21,41 +23,29 @@ interface ClassificationData {
 class ExportService {
   async exportTrainingData(): Promise<void> {
     try {
-      console.log('Starting training data export...');
-      
-      // Get all patients
       const patients = await getPatients();
-      console.log(`Found ${patients.length} patients`);
-      
       const bboxData: BBoxData[] = [];
       const classificationData: ClassificationData[] = [];
       
-      // Process each patient
       for (const patient of patients) {
         if (!patient.id) continue;
         
         try {
-          // Get patient's cases and X-ray images
           const [cases, xrayImages] = await Promise.all([
             getPatientCases(patient.id),
             getPatientXRayImages(patient.id)
           ]);
           
-          console.log(`Patient ${patient.firstName} ${patient.lastName}: ${cases.length} cases, ${xrayImages.length} X-ray images`);
-          
-          // Process each case
           for (const caseData of cases) {
             if (!caseData.id) continue;
             
-            // Find corresponding X-ray image
             const xrayImage = xrayImages.find(img => img.caseId === caseData.id);
             if (!xrayImage) continue;
             
             const imageId = xrayImage.id || `${caseData.id}_xray`;
             
-            // Process diagnoses for both exports
             if (caseData.diagnosis && caseData.diagnosis.length > 0) {
-              // For multi-label classification
+              // Multi-label classification
               const labels = caseData.diagnosis.map(d => d.name).join(';');
               
               classificationData.push({
@@ -64,7 +54,7 @@ class ExportService {
                 labels,
               });
               
-              // For bounding box detection
+              // Bounding box detection
               caseData.diagnosis.forEach(diagnosis => {
                 if (diagnosis.boundingBox) {
                   bboxData.push({
@@ -79,7 +69,7 @@ class ExportService {
                 }
               });
             } else {
-              // Cases without diagnosis - useful for negative samples
+              // Cases without diagnosis
               classificationData.push({
                 id: imageId,
                 image_url: xrayImage.imageUrl,
@@ -88,17 +78,15 @@ class ExportService {
             }
           }
         } catch (error) {
-          console.error(`Error processing patient ${patient.id}:`, error);
+          handleError(error, `Failed to process patient ${patient.id}`);
         }
       }
       
-      console.log(`Generated ${bboxData.length} bounding box records and ${classificationData.length} classification records`);
-      
-      // Download CSV files
+      // Export data
       this.downloadCSV(bboxData, 'bbox_training_data.csv');
       this.downloadCSV(classificationData, 'classification_training_data.csv');
-      
-      // Create summary file
+
+      // Export summary
       const summary = {
         export_date: new Date().toISOString(),
         total_patients: patients.length,
@@ -111,66 +99,79 @@ class ExportService {
       this.downloadJSON(summary, 'export_summary.json');
       
     } catch (error) {
-      console.error('Error exporting training data:', error);
-      throw new Error('Failed to export training data');
+      throwError(error, 'Failed to export training data');
+    }
+  }
+
+  async exportPatientsCSV(patients: Patient[]): Promise<void> {
+    try {
+      const exportData = patients.map(patient => ({
+        id: patient.id,
+        firstName: patient.firstName,
+        lastName: patient.lastName,
+        email: patient.email || '',
+        phoneNumber: patient.phoneNumber || '',
+        dateOfBirth: patient.dateOfBirth ? patient.dateOfBirth.toISOString().split('T')[0] : '',
+        address: patient.address || '',
+        createdAt: patient.createdAt ? patient.createdAt.toISOString() : ''
+      }));
+
+      this.downloadCSV(exportData, 'patients_export.csv');
+    } catch (error) {
+      throwError(error, 'Failed to export patient list');
     }
   }
 
   private downloadCSV(data: any[], filename: string): void {
     if (data.length === 0) {
-      console.warn(`No data to export for ${filename}`);
+      throwError(new Error('No data to export'), `No data available for ${filename}`);
       return;
     }
     
-    // Get headers from the first object
-    const headers = Object.keys(data[0]);
-    
-    // Create CSV content
-    const csvContent = [
-      headers.join(','), // Header row
-      ...data.map(row => 
-        headers.map(header => {
-          const value = row[header];
-          // Escape commas and quotes in CSV
-          if (typeof value === 'string' && (value.includes(',') || value.includes('"') || value.includes('\n'))) {
-            return `"${value.replace(/"/g, '""')}"`;
-          }
-          return value;
-        }).join(',')
-      )
-    ].join('\n');
-    
-    // Create and download file
-    const blob = new Blob([csvContent], { type: 'text/csv;charset=utf-8;' });
-    const link = document.createElement('a');
-    
-    if (link.download !== undefined) {
-      const url = URL.createObjectURL(blob);
-      link.setAttribute('href', url);
-      link.setAttribute('download', filename);
-      link.style.visibility = 'hidden';
-      document.body.appendChild(link);
-      link.click();
-      document.body.removeChild(link);
-      URL.revokeObjectURL(url);
+    try {
+      const headers = Object.keys(data[0]);
+      
+      const csvContent = [
+        headers.join(','),
+        ...data.map(row => 
+          headers.map(header => {
+            const value = row[header];
+            if (typeof value === 'string' && (value.includes(',') || value.includes('"') || value.includes('\n'))) {
+              return `"${value.replace(/"/g, '""')}"`;
+            }
+            return value;
+          }).join(',')
+        )
+      ].join('\n');
+      
+      const blob = new Blob([csvContent], { type: 'text/csv;charset=utf-8;' });
+      this.downloadFile(blob, filename);
+    } catch (error) {
+      throwError(error, `Failed to generate ${filename}`);
     }
   }
 
   private downloadJSON(data: any, filename: string): void {
-    const jsonContent = JSON.stringify(data, null, 2);
-    const blob = new Blob([jsonContent], { type: 'application/json;charset=utf-8;' });
-    const link = document.createElement('a');
-    
-    if (link.download !== undefined) {
-      const url = URL.createObjectURL(blob);
-      link.setAttribute('href', url);
-      link.setAttribute('download', filename);
-      link.style.visibility = 'hidden';
-      document.body.appendChild(link);
-      link.click();
-      document.body.removeChild(link);
-      URL.revokeObjectURL(url);
+    try {
+      const jsonContent = JSON.stringify(data, null, 2);
+      const blob = new Blob([jsonContent], { type: 'application/json;charset=utf-8;' });
+      this.downloadFile(blob, filename);
+    } catch (error) {
+      throwError(error, `Failed to generate ${filename}`);
     }
+  }
+
+  private downloadFile(blob: Blob, filename: string): void {
+    const link = document.createElement('a');
+    const url = URL.createObjectURL(blob);
+    
+    link.setAttribute('href', url);
+    link.setAttribute('download', filename);
+    link.style.visibility = 'hidden';
+    document.body.appendChild(link);
+    link.click();
+    document.body.removeChild(link);
+    URL.revokeObjectURL(url);
   }
 }
 

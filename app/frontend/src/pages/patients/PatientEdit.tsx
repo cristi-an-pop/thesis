@@ -1,17 +1,12 @@
 import { useState, useEffect } from 'react';
 import { useParams, useNavigate } from 'react-router-dom';
-import {
-  Box,
-  Typography,
-  Paper,
-  Alert,
-  Skeleton,
-  Grid,
-} from '@mui/material';
+import { Box, Typography, Paper, Alert } from '@mui/material';
 import { getPatientById, updatePatient } from '../../services/PatientsService';
 import { Patient } from '../../types/Patient';
 import PatientForm from '../../components/patient/PatientForm';
-import AppButton from '../../components/common/AppButton';
+import Loading from '../../components/common/Loading';
+import Error from '../../components/common/Error';
+import { handleError } from '../../lib/ErrorHandler';
 
 const PatientEdit = () => {
   const { id } = useParams<{ id: string }>();
@@ -23,23 +18,23 @@ const PatientEdit = () => {
   const [error, setError] = useState<string | null>(null);
   const [success, setSuccess] = useState(false);
   
-  useEffect(() => {
-    const fetchPatient = async () => {
-      if (!id) return;
-      
-      try {
-        setLoading(true);
-        const patientData = await getPatientById(id);
-        setPatient(patientData);
-        setError(null);
-      } catch (err) {
-        console.error('Error fetching patient:', err);
-        setError('Failed to load patient information');
-      } finally {
-        setLoading(false);
-      }
-    };
+  const fetchPatient = async () => {
+    if (!id) return;
     
+    try {
+      setLoading(true);
+      setError(null);
+      const patientData = await getPatientById(id);
+      setPatient(patientData);
+    } catch (err) {
+      handleError(err, 'Failed to load patient');
+      setError('Failed to load patient');
+    } finally {
+      setLoading(false);
+    }
+  };
+  
+  useEffect(() => {
     fetchPatient();
   }, [id]);
   
@@ -48,10 +43,7 @@ const PatientEdit = () => {
     
     try {
       setSaving(true);
-      setError(null);
-      
       await updatePatient(id, patientData);
-      
       setSuccess(true);
       
       setTimeout(() => {
@@ -59,52 +51,15 @@ const PatientEdit = () => {
       }, 1000);
       
     } catch (err) {
-      console.error('Error updating patient:', err);
-      setError('Failed to update patient. Please try again.');
+      handleError(err, 'Failed to update patient');
     } finally {
       setSaving(false);
     }
   };
   
-  if (loading) {
-    return (
-      <Box>
-        <Skeleton variant="text" sx={{ fontSize: '2rem', width: '50%', mb: 2 }} />
-        <Paper sx={{ p: 3 }}>
-          <Grid container spacing={2}>
-            <Grid item xs={12} md={6}>
-              <Skeleton variant="text" sx={{ fontSize: '1rem' }} />
-              <Skeleton variant="rectangular" height={40} sx={{ mt: 1, mb: 2 }} />
-            </Grid>
-            <Grid item xs={12} md={6}>
-              <Skeleton variant="text" sx={{ fontSize: '1rem' }} />
-              <Skeleton variant="rectangular" height={40} sx={{ mt: 1, mb: 2 }} />
-            </Grid>
-            <Grid item xs={12}>
-              <Skeleton variant="text" sx={{ fontSize: '1rem' }} />
-              <Skeleton variant="rectangular" height={80} sx={{ mt: 1 }} />
-            </Grid>
-          </Grid>
-        </Paper>
-      </Box>
-    );
-  }
-  
-  // Error state
-  if (error || !patient) {
-    return (
-      <Box sx={{ mt: 3 }}>
-        <Alert severity="error">
-          {error || 'Patient not found'}
-        </Alert>
-        <Box sx={{ mt: 2 }}>
-          <AppButton variant="outlined" onClick={() => navigate('/patients')}>
-            Back to Patients
-          </AppButton>
-        </Box>
-      </Box>
-    );
-  }
+  if (error) return <Error message={error} onRetry={fetchPatient} />;
+  if (loading) return <Loading message="Loading patient..." />;
+  if (!patient) return <Error message="Patient not found" onRetry={() => navigate('/patients')} />;
   
   return (
     <Box>
@@ -125,7 +80,6 @@ const PatientEdit = () => {
           onCancel={() => navigate(`/patients/${id}`)}
           submitButtonText="Save Changes"
           loading={saving}
-          error={error}
         />
       </Paper>
     </Box>

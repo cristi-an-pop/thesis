@@ -38,7 +38,6 @@ function App() {
     initializeModel();
   }, []);
 
-  // Show loading screen while model loads
   if (modelLoading) {
     return (
       <Box sx={{ 

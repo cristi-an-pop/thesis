@@ -1,11 +1,4 @@
-import {
-  Dialog,
-  DialogTitle,
-  DialogContent,
-  DialogActions,
-  IconButton,
-  Alert
-} from '@mui/material';
+import {Dialog, DialogTitle, DialogContent, DialogActions, IconButton, Alert} from '@mui/material';
 import CloseIcon from '@mui/icons-material/Close';
 import AppButton from './AppButton';
 
@@ -25,28 +18,9 @@ interface FormDialogProps {
   submitDisabled?: boolean;
 }
 
-const FormDialog = ({
-  open,
-  title,
-  onClose,
-  onSubmit,
-  children,
-  submitText = 'Save',
-  cancelText = 'Cancel',
-  loading = false,
-  error = null,
-  maxWidth = 'sm',
-  fullWidth = true,
-  showActions = true,
-  submitDisabled = false
-}: FormDialogProps) => {
+const FormDialog = ({open, title, onClose, onSubmit, children, submitText = 'Save', cancelText = 'Cancel', loading = false, error = null, maxWidth = 'sm', fullWidth = true, showActions = true, submitDisabled = false }: FormDialogProps) => {
   return (
-    <Dialog 
-      open={open} 
-      onClose={onClose} 
-      maxWidth={maxWidth} 
-      fullWidth={fullWidth}
-    >
+    <Dialog open={open} onClose={onClose} maxWidth={maxWidth} fullWidth={fullWidth}>
       <DialogTitle sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
         {title}
         <IconButton onClick={onClose} size="small">
@@ -69,12 +43,7 @@ const FormDialog = ({
             {cancelText}
           </AppButton>
           {onSubmit && (
-            <AppButton 
-              onClick={onSubmit}
-              variant="contained"
-              loading={loading}
-              disabled={loading || submitDisabled}
-            >
+            <AppButton onClick={onSubmit} variant="contained" loading={loading} disabled={loading || submitDisabled}>
               {submitText}
             </AppButton>
           )}

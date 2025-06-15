@@ -1,20 +1,11 @@
 import React from "react";
-import { 
-  Button, 
-  ButtonProps, 
-  CircularProgress 
-} from "@mui/material";
+import { Button, ButtonProps, CircularProgress } from "@mui/material";
 
 interface AppButtonProps extends ButtonProps {
   loading?: boolean;
 }
 
-const AppButton: React.FC<AppButtonProps> = ({
-  children,
-  loading,
-  disabled,
-  ...props
-}) => {
+const AppButton: React.FC<AppButtonProps> = ({children, loading, disabled, ...props}) => {
   return (
     <Button
       disabled={disabled || loading}
@@ -24,11 +15,7 @@ const AppButton: React.FC<AppButtonProps> = ({
       {...props}
     >
       {loading ? (
-        <CircularProgress 
-          size={24} 
-          color="inherit" 
-          sx={{ position: 'absolute' }} 
-        />
+        <CircularProgress size={24} color="inherit" sx={{ position: 'absolute' }} />
       ) : null}
       <span style={{ visibility: loading ? 'hidden' : 'visible' }}>
         {children}

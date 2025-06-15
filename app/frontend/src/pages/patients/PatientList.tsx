@@ -1,89 +1,69 @@
 import { useState, useEffect } from 'react';
 import { useNavigate } from 'react-router-dom';
-import {
-  Box,
-  Typography,
-  Button,
-  IconButton,
-} from '@mui/material';
+import { Box, Typography, Button, IconButton } from '@mui/material';
 import { getPatients, searchPatients } from '../../services/PatientsService';
 import { Patient } from '../../types/Patient';
 import { DataTable, ColumnDef } from '../../components/common/DataTable';
+import Loading from '../../components/common/Loading';
+import Error from '../../components/common/Error';
+import { handleError } from '../../lib/ErrorHandler';
+import ExportService from '../../services/ExportService';
 
 import AddIcon from '@mui/icons-material/Add';
 import EditIcon from '@mui/icons-material/Edit';
 import VisibilityIcon from '@mui/icons-material/Visibility';
 import DownloadIcon from '@mui/icons-material/Download';
-import ExportService from '@/services/ExportService';
 
 const PatientList = () => {
   const navigate = useNavigate();
   const [patients, setPatients] = useState<Patient[]>([]);
   const [loading, setLoading] = useState(true);
-  const [error, setError] = useState<string | undefined>(undefined);
+  const [error, setError] = useState<string | null>(null);
   const [exporting, setExporting] = useState(false);
-  const [exportMenuAnchor, setExportMenuAnchor] = useState<null | HTMLElement>(null);
 
+  const fetchPatients = async () => {
+    try {
+      setLoading(true);
+      setError(null);
+      const data = await getPatients();
+      setPatients(data);
+    } catch (err) {
+      handleError(err, "Failed to load patients");
+      setError("Failed to load patients");
+    } finally {
+      setLoading(false);
+    }
+  };
 
   useEffect(() => {
-    const fetchPatients = async () => {
-      try {
-        setLoading(true);
-        const data = await getPatients();
-        setPatients(data);
-        setError(undefined);
-      } catch (error) {
-        console.error('Error fetching patients:', error);
-        setError('Failed to load patients');
-      } finally {
-        setLoading(false);
-      }
-    };
-
     fetchPatients();
   }, []);
 
   const handleSearch = async (searchTerm: string) => {
     try {
       setLoading(true);
-      if (!searchTerm.trim()) {
-        const data = await getPatients();
-        setPatients(data);
-      } else {
-        const results = await searchPatients(searchTerm);
-        setPatients(results);
-      }
-      setError(undefined);
-    } catch (error) {
-      console.error('Error searching patients:', error);
-      setError('Search failed');
+      const results = searchTerm.trim() 
+        ? await searchPatients(searchTerm)
+        : await getPatients();
+      setPatients(results);
+      setError(null);
+    } catch (err) {
+      handleError(err, "Search failed");
     } finally {
       setLoading(false);
     }
   };
 
-  const handleViewPatient = (patient: Patient) => {
-    navigate(`/patients/${patient.id}`);
-  };
-
-  const handleAddPatient = () => {
-    navigate('/patients/new');
-  };
-
-  const handleExportTrainingData = async () => {
+  const handleExport = async () => {
     try {
       setExporting(true);
-      setExportMenuAnchor(null);
-      
       await ExportService.exportTrainingData();
-    } catch (error) {
-      console.error('Export failed:', error);
-      alert('Export failed. Please try again.');
+    } catch (err) {
+      handleError(err, "Export failed");
     } finally {
       setExporting(false);
     }
   };
-
 
   const columns: ColumnDef<Patient>[] = [
     {
@@ -134,6 +114,9 @@ const PatientList = () => {
     }
   ];
 
+  if (error) return <Error message={error} onRetry={fetchPatients} />;
+  if (loading) return <Loading message="Loading patients..." />;
+
   return (
     <Box>
       <Box sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', mb: 3 }}>
@@ -144,16 +127,15 @@ const PatientList = () => {
           <Button
             variant="outlined"
             startIcon={<DownloadIcon />}
-            onClick={handleExportTrainingData}
-            disabled={exporting || loading}
+            onClick={handleExport}
+            disabled={exporting}
           >
-            Export Data
+            {exporting ? 'Exporting...' : 'Export Data'}
           </Button>
           <Button
             variant="contained"
-            color="primary"
             startIcon={<AddIcon />}
-            onClick={handleAddPatient}
+            onClick={() => navigate('/patients/new')}
           >
             Add Patient
           </Button>
@@ -164,9 +146,7 @@ const PatientList = () => {
         data={patients}
         columns={columns}
         getRowId={(row) => row.id || ''}
-        onRowClick={handleViewPatient}
-        loading={loading}
-        error={error}
+        onRowClick={(patient) => navigate(`/patients/${patient.id}`)}
         searchable={true}
         searchPlaceholder="Search patients..."
         onSearch={handleSearch}

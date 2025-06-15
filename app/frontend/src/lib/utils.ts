@@ -41,18 +41,18 @@ export const resizeImage = async (file: File, dimensions: number = 1024): Promis
 }
 
 export const formatFirestoreDate = (date: any): string => {
-    try {
-      if (date && typeof date.toDate === 'function') {
-        return format(date.toDate(), 'MMM d, yyyy HH:mm');
-      }
-      if (date instanceof Date) {
-        return format(date, 'MMM d, yyyy HH:mm');
-      }
-      if (typeof date === 'string') {
-        return format(new Date(date), 'MMM d, yyyy HH:mm');
-      }
-      return 'Invalid date';
-    } catch (error) {
-      return 'Invalid date';
+  try {
+    if (date && typeof date.toDate === 'function') {
+      return format(date.toDate(), 'MMM d, yyyy HH:mm');
     }
+    if (date instanceof Date) {
+      return format(date, 'MMM d, yyyy HH:mm');
+    }
+    if (typeof date === 'string') {
+      return format(new Date(date), 'MMM d, yyyy HH:mm');
+    }
+    return 'Invalid date';
+  } catch (error) {
+    return 'Invalid date';
   }
+}

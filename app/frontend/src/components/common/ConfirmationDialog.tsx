@@ -16,14 +16,7 @@ interface ConfirmationDialogProps {
   loading?: boolean;
 }
 
-const ConfirmationDialog = ({
-  open,
-  title,
-  message,
-  onConfirm,
-  onCancel,
-  loading = false
-}: ConfirmationDialogProps) => {
+const ConfirmationDialog = ({open, title, message, onConfirm, onCancel, loading = false }: ConfirmationDialogProps) => {
   return (
     <Dialog open={open} onClose={onCancel}>
       <DialogTitle>{title}</DialogTitle>
@@ -34,11 +27,7 @@ const ConfirmationDialog = ({
         <AppButton onClick={onCancel} disabled={loading}>
           Cancel
         </AppButton>
-        <AppButton 
-          onClick={onConfirm} 
-          color="error"
-          loading={loading}
-        >
+        <AppButton onClick={onConfirm} color="error" loading={loading}>
           Delete
         </AppButton>
       </DialogActions>

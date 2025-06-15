@@ -1,20 +1,8 @@
-import { 
-    collection, 
-    doc, 
-    getDocs, 
-    getDoc, 
-    addDoc, 
-    updateDoc, 
-    deleteDoc, 
-    query, 
-    where, 
-    orderBy, 
-    serverTimestamp
-} from "firebase/firestore";
+import { collection, doc, getDocs, getDoc, addDoc, updateDoc, deleteDoc, query, where, orderBy, serverTimestamp} from "firebase/firestore";
 import { db } from "../config/Firebase";
 import { Case } from "../types/Case";
+import { throwError } from "../lib/ErrorHandler";
 
-// Convert Firestore data to our Case model
 const convertCase = (doc: any): Case => {
     const data = doc.data();
     return {
@@ -29,12 +17,10 @@ const convertCase = (doc: any): Case => {
     };
 };
 
-// Get all cases for a patient
 export const getPatientCases = async (patientId: string): Promise<Case[]> => {
     try {
         if (!patientId) {
-            console.warn("No patient ID provided. Returning empty case list.");
-            return [];
+            throwError(new Error("Invalid patient ID"), "Patient ID is required");
         }
 
         const q = query(
@@ -46,73 +32,89 @@ export const getPatientCases = async (patientId: string): Promise<Case[]> => {
         
         return querySnapshot.docs.map(convertCase);
     } catch (error) {
-        console.error(`Error fetching cases for patient ${patientId}:`, error);
-        
-        const errorMessage = error instanceof Error ? error.message : String(error);
-        if (errorMessage.includes("FAILED_PRECONDITION") && errorMessage.includes("index")) {
-            console.error("You need to create a composite index for this query. Check Firebase console for details.");
+        if (error instanceof Error && error.message.includes("FAILED_PRECONDITION") && error.message.includes("index")) {
+            throwError(error, "Database index missing. Please contact support.");
         }
+        throwError(error, "Failed to load patient cases");
         return [];
     }
 };
 
-// Get case by ID
 export const getCaseById = async (id: string): Promise<Case | null> => {
     try {
+        if (!id) {
+            throwError(new Error("Invalid case ID"), "Case ID is required");
+        }
+
         const docRef = doc(db, "cases", id);
         const docSnap = await getDoc(docRef);
         
-        if (docSnap.exists()) {
-            return convertCase(docSnap);
-        }
-        return null;
+        return docSnap.exists() ? convertCase(docSnap) : null;
     } catch (error) {
-        console.error(`Error fetching case with ID ${id}:`, error);
-        throw new Error("Failed to fetch case");
+        throwError(error, "Failed to load case");
+        return null;
     }
 };
 
-// Add new case
-export const addCase = async (caseData: Omit<Case, 'id'>): Promise<string> => {
+export const addCase = async (caseData: Omit<Case, 'id' | 'createdAt' | 'updatedAt'>): Promise<string> => {
     try {
+        if (!caseData.patientId || !caseData.title) {
+            throwError(new Error("Missing required fields"), "Patient ID and title are required");
+        }
+
         const docRef = await addDoc(collection(db, "cases"), {
             ...caseData,
-            diagnosis: caseData.diagnosis || [],
+            diagnosis: caseData.diagnosis || "",
+            notes: caseData.notes || [],
             createdAt: serverTimestamp(),
             updatedAt: serverTimestamp()
         });
         return docRef.id;
     } catch (error) {
-        console.error("Error adding case:", error);
-        throw new Error("Failed to add case");
+        throwError(error, "Failed to create case");
+        return "";
     }
 };
 
-// Update case
-export const updateCase = async (id: string, updates: Partial<Case>): Promise<void> => {
+export const updateCase = async (id: string, updates: Partial<Omit<Case, 'id' | 'createdAt'>>): Promise<void> => {
     try {
+        if (!id) {
+            throwError(new Error("Invalid case ID"), "Case ID is required");
+        }
+
         const docRef = doc(db, "cases", id);
+        const docSnap = await getDoc(docRef);
+        if (!docSnap.exists()) {
+            throwError(new Error("Case not found"), "Case not found");
+        }
+
         await updateDoc(docRef, {
             ...updates,
             updatedAt: serverTimestamp()
         });
     } catch (error) {
-        console.error(`Error updating case with ID ${id}:`, error);
-        throw new Error("Failed to update case");
+        throwError(error, "Failed to update case");
     }
 };
 
-// Delete case
 export const deleteCase = async (id: string): Promise<void> => {
     try {
-        await deleteDoc(doc(db, "cases", id));
+        if (!id) {
+            throwError(new Error("Invalid case ID"), "Case ID is required");
+        }
+
+        const docRef = doc(db, "cases", id);
+        const docSnap = await getDoc(docRef);
+        if (!docSnap.exists()) {
+            throwError(new Error("Case not found"), "Case not found");
+        }
+
+        await deleteDoc(docRef);
     } catch (error) {
-        console.error(`Error deleting case with ID ${id}:`, error);
-        throw new Error("Failed to delete case");
+        throwError(error, "Failed to delete case");
     }
 };
 
-// Get all cases
 export const getAllCases = async (): Promise<Case[]> => {
     try {
         const q = query(
@@ -123,7 +125,30 @@ export const getAllCases = async (): Promise<Case[]> => {
         
         return querySnapshot.docs.map(convertCase);
     } catch (error) {
-        console.error("Error fetching all cases:", error);
-        throw new Error("Failed to fetch cases");
+        throwError(error, "Failed to load cases");
+        return [];
     }
-}
+};
+
+export const searchCases = async (searchTerm: string): Promise<Case[]> => {
+    try {
+        if (!searchTerm || searchTerm.trim().length < 2) {
+            throwError(new Error("Invalid search term"), "Search term must be at least 2 characters");
+        }
+
+        const normalizedTerm = searchTerm.trim().toLowerCase();
+        
+        const q = query(
+            collection(db, "cases"),
+            where("title", ">=", normalizedTerm),
+            where("title", "<=", normalizedTerm + "\uf8ff"),
+            orderBy("title"),
+        );
+        
+        const querySnapshot = await getDocs(q);
+        return querySnapshot.docs.map(convertCase);
+    } catch (error) {
+        throwError(error, "Failed to search cases");
+        return [];
+    }
+};

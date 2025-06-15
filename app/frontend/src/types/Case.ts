@@ -16,7 +16,7 @@ export interface Diagnosis {
     name: string;
     confidence: number;
     boundingBox?: BoundingBox;
-    gradcamData?: string; // Base64 encoded image data for Grad-CAM visualization
+    gradcamData?: string;
 }
 
 export interface Case {

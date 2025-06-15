@@ -9,7 +9,7 @@ import ImageUpload from '../common/ImageUpload';
 import CloudUploadIcon from '@mui/icons-material/CloudUpload';
 import SmartToyIcon from '@mui/icons-material/SmartToy';
 import PsychologyIcon from '@mui/icons-material/Psychology';
-import GradCAMService from '@/services/GradCAMService';
+import GradCAMService from '../../services/GradCAMService';
 
 interface CaseFormProps {
   patientId: string;
@@ -122,8 +122,7 @@ const CaseForm = ({ patientId, onSubmitSuccess }: CaseFormProps) => {
         title,
         description: description.trim() || undefined,
         diagnosis: aiDiagnoses,
-        patientId,
-        createdAt: new Date(),
+        patientId
       });
       
       await addXRayImage(xrayFile, {

@@ -14,35 +14,16 @@ interface TabsContainerProps {
   sx?: any;
 }
 
-const TabsContainer = ({ 
-  tabs, 
-  defaultTab = 0, 
-  variant = 'fullWidth', 
-  collapsed = false,
-  sx 
-}: TabsContainerProps) => {
+const TabsContainer = ({tabs, defaultTab = 0, variant = 'fullWidth', collapsed = false, sx }: TabsContainerProps) => {
   const [activeTab, setActiveTab] = useState(defaultTab);
 
   return (
-    <Paper sx={{ 
-      height: '100%', 
-      display: 'flex', 
-      flexDirection: 'column',
-      ...sx 
-    }}>
+    <Paper sx={{ height: '100%', display: 'flex', flexDirection: 'column', ...sx }}>
       {!collapsed && (
-        <Tabs
-          value={activeTab}
-          onChange={(_, newValue) => setActiveTab(newValue)}
-          variant={variant}
-          sx={{ borderBottom: 1, height: '13%', borderColor: 'divider' }}
+        <Tabs value={activeTab} onChange={(_, newValue) => setActiveTab(newValue)} variant={variant} sx={{ borderBottom: 1, height: '13%', borderColor: 'divider' }}
         >
           {tabs.map((tab, index) => (
-            <Tab 
-              key={index}
-              label={tab.label} 
-              sx={{ height: '90px' }}
-            />
+            <Tab  key={index} label={tab.label}   sx={{ height: '90px' }} />
           ))}
         </Tabs>
       )}

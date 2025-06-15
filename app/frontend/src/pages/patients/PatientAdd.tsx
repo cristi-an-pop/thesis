@@ -4,18 +4,16 @@ import { Box, Typography, Alert, Paper } from '@mui/material';
 import { addPatient } from '../../services/PatientsService';
 import { Patient } from '../../types/Patient';
 import PatientForm from '../../components/patient/PatientForm';
+import { handleError } from '../../lib/ErrorHandler';
 
 const PatientAdd = () => {
   const navigate = useNavigate();
   const [loading, setLoading] = useState(false);
-  const [error, setError] = useState<string | null>(null);
   const [success, setSuccess] = useState(false);
 
   const handleSubmit = async (patientData: Omit<Patient, 'id'>) => {
     try {
       setLoading(true);
-      setError(null);
-      
       const patientId = await addPatient(patientData);
       setSuccess(true);
       
@@ -24,8 +22,7 @@ const PatientAdd = () => {
       }, 1000);
       
     } catch (err) {
-      console.error('Error adding patient:', err);
-      setError('Failed to add patient. Please try again.');
+      handleError(err, 'Failed to add patient');
     } finally {
       setLoading(false);
     }
@@ -49,7 +46,6 @@ const PatientAdd = () => {
           onCancel={() => navigate('/patients')}
           submitButtonText="Add Patient"
           loading={loading}
-          error={error}
         />
       </Paper>
     </Box>

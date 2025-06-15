@@ -1,45 +1,24 @@
 import { useState, useEffect } from 'react';
 import { Link, useNavigate } from 'react-router-dom';
-import {
-  Box,
-  Card,
-  CardContent,
-  Container,
-  Typography,
-  Grid,
-  Avatar,
-  IconButton,
-  List,
-  ListItem,
-  ListItemAvatar,
-  ListItemText,
-  ListItemButton,
-  Skeleton,
-  Alert
-} from '@mui/material';
-import {
-  PieChart,
-  Pie,
-  Cell,
-  Tooltip,
-  ResponsiveContainer,
-} from 'recharts';
-import { format } from 'date-fns';
+import { Box, Card, CardContent, Container, Typography, Grid, Avatar, IconButton, List, ListItem, ListItemAvatar, ListItemText, ListItemButton } from '@mui/material';
+import { PieChart, Pie, Cell, Tooltip, ResponsiveContainer } from 'recharts';
+import Loading from '../../components/common/Loading';
+import Error from '../../components/common/Error';
+import useAuth from '../../hooks/useAuth';
+import { getPatients } from '../../services/PatientsService';
+import { getAllCases } from '../../services/CasesService';
+import { handleError } from '../../lib/ErrorHandler';
+import { Patient } from '../../types/Patient';
+import { Case } from '../../types/Case';
+import { formatFirestoreDate } from '../../lib/utils';
 
-import useAuth from '@/hooks/useAuth';
-import { getPatients } from '@/services/PatientsService';
-import { getAllCases } from '@/services/CasesService';
-import { Patient } from '@/types/Patient';
-import { Case } from '@/types/Case';
-
-// Icons
 import PeopleIcon from '@mui/icons-material/People';
 import MedicalServicesIcon from '@mui/icons-material/MedicalServices';
 import AssignmentIcon from '@mui/icons-material/Assignment';
 import TrendingUpIcon from '@mui/icons-material/TrendingUp';
 import PersonIcon from '@mui/icons-material/Person';
 import VisibilityIcon from '@mui/icons-material/Visibility';
-import { formatFirestoreDate } from '@/lib/utils';
+import RefreshIcon from '@mui/icons-material/Refresh';
 
 interface DashboardStats {
   totalPatients: number;
@@ -63,106 +42,85 @@ const Home = () => {
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
 
+  const fetchDashboardData = async () => {
+    try {
+      setLoading(true);
+      setError(null);
+      
+      const [patients, cases] = await Promise.all([
+        getPatients(), 
+        getAllCases()
+      ]);
+
+      const totalPatients = patients.length;
+      const totalCases = cases.length;
+      
+      const allDiagnoses = cases.flatMap(c => c.diagnosis || []);
+      const totalDiagnoses = allDiagnoses.length;
+      
+      const thisMonth = new Date();
+      const casesThisMonth = cases.filter(c => {
+        const caseDate = new Date(formatFirestoreDate(c.createdAt));
+        return caseDate.getMonth() === thisMonth.getMonth() && 
+               caseDate.getFullYear() === thisMonth.getFullYear();
+      }).length;
+
+      const diagnosisCount: { [key: string]: number } = {};
+      allDiagnoses.forEach(diagnosis => {
+        diagnosisCount[diagnosis.name] = (diagnosisCount[diagnosis.name] || 0) + 1;
+      });
+      
+      const diagnosisDistribution = Object.entries(diagnosisCount)
+        .sort(([,a], [,b]) => b - a)
+        .slice(0, 8)
+        .map(([name, value], index) => ({
+          name,
+          value,
+          color: DIAGNOSIS_COLORS[index % DIAGNOSIS_COLORS.length]
+        }));
+
+      const recentCases = cases
+        .sort((a, b) => {
+          const dateA = formatFirestoreDate(a.createdAt);
+          const dateB = formatFirestoreDate(b.createdAt);
+          const dateAObj = new Date(dateA);
+          const dateBObj = new Date(dateB);
+          return dateBObj.getTime() - dateAObj.getTime();
+        })
+        .slice(0, 5);
+
+      const recentPatients = patients
+        .sort((a, b) => {
+          const dateA = new Date(formatFirestoreDate(a.createdAt));
+          const dateB = new Date(formatFirestoreDate(b.createdAt));
+          return dateB.getTime() - dateA.getTime();
+        })
+        .slice(0, 5);
+
+      setStats({
+        totalPatients,
+        totalCases,
+        totalDiagnoses,
+        casesThisMonth,
+        diagnosisDistribution,
+        recentCases,
+        recentPatients
+      });
+
+    } catch (err) {
+      // Use ErrorHandler for logging, but keep local error state for fallback UI
+      handleError(err, "Failed to load dashboard data");
+      setError("Failed to load dashboard data");
+    } finally {
+      setLoading(false);
+    }
+  };
+
   useEffect(() => {
-    const fetchDashboardData = async () => {
-      try {
-        setLoading(true);
-        
-        // Fetch patients and cases
-        const [patients, cases] = await Promise.all([
-          getPatients(),
-          getAllCases()
-        ]);
-
-        // Calculate stats
-        const totalPatients = patients.length;
-        const totalCases = cases.length;
-        
-        // Count diagnoses
-        const allDiagnoses = cases.flatMap(c => c.diagnosis || []);
-        const totalDiagnoses = allDiagnoses.length;
-        
-        // Cases this month
-        const thisMonth = new Date();
-        const casesThisMonth = cases.filter(c => {
-          const caseDate = new Date(formatFirestoreDate(c.createdAt));
-          return caseDate.getMonth() === thisMonth.getMonth() && 
-                 caseDate.getFullYear() === thisMonth.getFullYear();
-        }).length;
-
-        // Diagnosis distribution
-        const diagnosisCount: { [key: string]: number } = {};
-        allDiagnoses.forEach(diagnosis => {
-          diagnosisCount[diagnosis.name] = (diagnosisCount[diagnosis.name] || 0) + 1;
-        });
-        
-        const diagnosisDistribution = Object.entries(diagnosisCount)
-          .sort(([,a], [,b]) => b - a)
-          .slice(0, 8) // Top 8 diagnoses
-          .map(([name, value], index) => ({
-            name,
-            value,
-            color: DIAGNOSIS_COLORS[index % DIAGNOSIS_COLORS.length]
-          }));
-
-        // Recent cases and patients
-        const recentCases = cases
-          .sort((a, b) => {
-            const dateA = formatFirestoreDate(a.createdAt);
-            const dateB = formatFirestoreDate(b.createdAt);
-            const dateAObj = new Date(dateA);
-            const dateBObj = new Date(dateB);
-            return dateBObj.getTime() - dateAObj.getTime();
-          })
-          .slice(0, 5);
-
-        const recentPatients = patients
-          .sort((a, b) => {
-            const dateA = new Date(formatFirestoreDate(a.createdAt));
-            const dateB = new Date(formatFirestoreDate(b.createdAt));
-            return dateB.getTime() - dateA.getTime();
-          })
-          .slice(0, 5);
-
-        setStats({
-          totalPatients,
-          totalCases,
-          totalDiagnoses,
-          casesThisMonth,
-          diagnosisDistribution,
-          recentCases,
-          recentPatients
-        });
-
-      } catch (err) {
-        console.error('Error fetching dashboard data:', err);
-        setError('Failed to load dashboard data');
-      } finally {
-        setLoading(false);
-      }
-    };
-
     if (currentUser) {
       fetchDashboardData();
     }
   }, [currentUser]);
-
-  const formatDate = (date: any): string => {
-    try {
-      if (date && typeof date.toDate === 'function') {
-        return format(date.toDate(), 'MMM d, yyyy');
-      }
-      if (date instanceof Date) {
-        return format(date, 'MMM d, yyyy');
-      }
-      if (typeof date === 'string') {
-        return format(new Date(date), 'MMM d, yyyy');
-      }
-      return 'Unknown date';
-    } catch (error) {
-      return 'Invalid date';
-    }
-  };
 
   const StatCard = ({ title, value, icon, color, subtitle }: {
     title: string;
@@ -209,74 +167,59 @@ const Home = () => {
   }
 
   if (error) {
-    return (
-      <Container sx={{ mt: 4 }}>
-        <Alert severity="error" sx={{ mb: 3 }}>
-          {error}
-        </Alert>
-      </Container>
-    );
+    return <Error message={error} onRetry={fetchDashboardData} />;
+  }
+
+  if (loading) {
+    return <Loading message="Loading dashboard..." />;
   }
 
   return (
     <Container maxWidth="xl" sx={{ mt: 4, mb: 4 }}>
       {/* Welcome Header */}
-      <Box sx={{ mb: 4 }}>
+      <Box sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', mb: 4 }}>
         <Typography variant="h4" gutterBottom fontWeight="bold">
           Welcome back, Dr. {currentUser.email?.split('@')[0]}
         </Typography>
+        <IconButton onClick={fetchDashboardData} title="Refresh">
+          <RefreshIcon />
+        </IconButton>
       </Box>
 
       {/* Stats Cards */}
       <Grid container spacing={3} sx={{ mb: 4 }}>
         <Grid item xs={12} sm={6} md={3}>
-          {loading ? (
-            <Skeleton variant="rectangular" height={120} />
-          ) : (
-            <StatCard
-              title="Total Patients"
-              value={stats?.totalPatients || 0}
-              icon={<PeopleIcon />}
-              color="#3f88f6"
-            />
-          )}
+          <StatCard
+            title="Total Patients"
+            value={stats?.totalPatients || 0}
+            icon={<PeopleIcon />}
+            color="#3f88f6"
+          />
         </Grid>
         <Grid item xs={12} sm={6} md={3}>
-          {loading ? (
-            <Skeleton variant="rectangular" height={120} />
-          ) : (
-            <StatCard
-              title="Total Cases"
-              value={stats?.totalCases || 0}
-              icon={<AssignmentIcon />}
-              color="#10b981"
-            />
-          )}
+          <StatCard
+            title="Total Cases"
+            value={stats?.totalCases || 0}
+            icon={<AssignmentIcon />}
+            color="#10b981"
+          />
         </Grid>
         <Grid item xs={12} sm={6} md={3}>
-          {loading ? (
-            <Skeleton variant="rectangular" height={120} />
-          ) : (
-            <StatCard
-              title="Total Diagnoses"
-              value={stats?.totalDiagnoses || 0}
-              icon={<MedicalServicesIcon />}
-              color="#f59e0b"
-            />
-          )}
+          <StatCard
+            title="Total Diagnoses"
+            value={stats?.totalDiagnoses || 0}
+            icon={<MedicalServicesIcon />}
+            color="#f59e0b"
+          />
         </Grid>
         <Grid item xs={12} sm={6} md={3}>
-          {loading ? (
-            <Skeleton variant="rectangular" height={120} />
-          ) : (
-            <StatCard
-              title="Cases This Month"
-              value={stats?.casesThisMonth || 0}
-              icon={<TrendingUpIcon />}
-              color="#8b5cf6"
-              subtitle="Current month"
-            />
-          )}
+          <StatCard
+            title="Cases This Month"
+            value={stats?.casesThisMonth || 0}
+            icon={<TrendingUpIcon />}
+            color="#8b5cf6"
+            subtitle="Current month"
+          />
         </Grid>
       </Grid>
 
@@ -288,9 +231,7 @@ const Home = () => {
               <Typography variant="h6" gutterBottom fontWeight="bold">
                 Common Diagnoses
               </Typography>
-              {loading ? (
-                <Skeleton variant="rectangular" height={300} />
-              ) : stats?.diagnosisDistribution.length ? (
+              {stats?.diagnosisDistribution.length ? (
                 <ResponsiveContainer width="100%" height={300}>
                   <PieChart>
                     <Pie
@@ -332,11 +273,7 @@ const Home = () => {
                 </Link>
               </Box>
               
-              {loading ? (
-                Array.from({ length: 5 }).map((_, index) => (
-                  <Skeleton key={index} variant="rectangular" height={60} sx={{ mb: 1 }} />
-                ))
-              ) : stats?.recentCases.length ? (
+              {stats?.recentCases.length ? (
                 <List sx={{ p: 0, maxHeight: 320, overflow: 'auto' }}>
                   {stats.recentCases.map((case_, index) => (
                     <ListItem key={case_.id || index} disablePadding>
@@ -351,7 +288,7 @@ const Home = () => {
                         </ListItemAvatar>
                         <ListItemText
                           primary={case_.title}
-                          secondary={formatDate(case_.createdAt)}
+                          secondary={formatFirestoreDate(case_.createdAt)}
                           primaryTypographyProps={{ fontWeight: 500 }}
                         />
                         <IconButton size="small">
@@ -387,15 +324,7 @@ const Home = () => {
                 </Link>
               </Box>
               
-              {loading ? (
-                <Grid container spacing={2}>
-                  {Array.from({ length: 5 }).map((_, index) => (
-                    <Grid item xs={12} sm={6} md={4} lg={2.4} key={index}>
-                      <Skeleton variant="rectangular" height={80} />
-                    </Grid>
-                  ))}
-                </Grid>
-              ) : stats?.recentPatients.length ? (
+              {stats?.recentPatients.length ? (
                 <Grid container spacing={2}>
                   {stats.recentPatients.map((patient, index) => (
                     <Grid item xs={12} sm={6} md={4} lg={2.4} key={patient.id || index}>
@@ -415,7 +344,7 @@ const Home = () => {
                             {`${patient.firstName} ${patient.lastName}`}
                           </Typography>
                           <Typography variant="caption" color="text.secondary">
-                            {formatDate(patient.createdAt)}
+                            {formatFirestoreDate(patient.createdAt)}
                           </Typography>
                         </CardContent>
                       </Card>
