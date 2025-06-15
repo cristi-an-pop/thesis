@@ -1,8 +1,8 @@
 import jsPDF from 'jspdf';
 import html2canvas from 'html2canvas';
-import { Case } from '@/types/Case';
-import { Patient } from '@/types/Patient';
-import { XRayImage } from '@/types/XRayImage';
+import { Case } from '../types/Case';
+import { Patient } from '../types/Patient';
+import { XRayImage } from '../types/XRayImage';
 import { format } from 'date-fns';
 
 interface ReportData {

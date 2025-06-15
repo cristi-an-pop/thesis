@@ -1,10 +1,4 @@
-import { clsx, type ClassValue } from "clsx"
-import { twMerge } from "tailwind-merge"
 import { format } from 'date-fns'
-
-export function cn(...inputs: ClassValue[]) {
-  return twMerge(clsx(inputs))
-}
 
 export const resizeImage = async (file: File, dimensions: number = 1024): Promise<{resizedFile: File, width: number, height: number, sizeInBytes: number, format: string}> => {
   const maxSize = dimensions;

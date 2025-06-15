@@ -1,20 +1,11 @@
 import React, { useState, useEffect } from "react";
-import {
-  Box,
-  TextField,
-  Typography,
-  InputAdornment,
-  Link,
-  FormControlLabel,
-  Checkbox,
-  Divider,
-} from "@mui/material";
+import { Box, TextField, Typography, InputAdornment, Link, FormControlLabel, Checkbox, Divider } from "@mui/material";
 import { Link as RouterLink } from "react-router-dom";
 import AuthService from "../../services/AuthService";
 import FormContainer from "../../components/common/FormContainer";
 import AppButton from "../../components/common/AppButton";
+import { handleError } from "../../lib/ErrorHandler";
 
-// Icons
 import EmailIcon from "@mui/icons-material/Email";
 import LockIcon from "@mui/icons-material/Lock";
 import PersonAddIcon from "@mui/icons-material/PersonAdd";
@@ -26,27 +17,22 @@ const PASSWORD_REGEX = /^(?=.*[a-z])(?=.*[A-Z])(?=.*[0-9])(?=.*[!@#$%]).{8,24}$/
 const Register = () => {
   const [email, setEmail] = useState("");
   const [validEmail, setValidEmail] = useState(false);
-
   const [password, setPassword] = useState("");
   const [validPassword, setValidPassword] = useState(false);
-
   const [confirmPassword, setConfirmPassword] = useState("");
   const [validMatch, setValidMatch] = useState(false);
-
   const [isAdmin, setIsAdmin] = useState(false);
-
   const [isRegistering, setIsRegistering] = useState(false);
   const [errorMessage, setErrorMessage] = useState("");
   const [success, setSuccess] = useState(false);
 
-  // Validation effects
   useEffect(() => {
     setValidEmail(EMAIL_REGEX.test(email));
   }, [email]);
 
   useEffect(() => {
     setValidPassword(PASSWORD_REGEX.test(password));
-    setValidMatch(password === confirmPassword);
+    setValidMatch(password === confirmPassword && confirmPassword.length > 0);
   }, [password, confirmPassword]);
 
   useEffect(() => {
@@ -56,50 +42,76 @@ const Register = () => {
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     
-    if (!EMAIL_REGEX.test(email) || !PASSWORD_REGEX.test(password)) {
-      setErrorMessage("Invalid Entry");
+    if (isRegistering) return;
+    
+    // Validation
+    if (!validEmail) {
+      setErrorMessage("Please enter a valid email address");
+      return;
+    }
+    
+    if (!validPassword) {
+      setErrorMessage("Password must meet requirements");
+      return;
+    }
+    
+    if (!validMatch) {
+      setErrorMessage("Passwords must match");
       return;
     }
     
     try {
+      setIsRegistering(true);
+      setErrorMessage("");
+      
       const role = isAdmin ? "admin" : "user";
-      if (!isRegistering) {
-        setIsRegistering(true);
-        await AuthService.doCreateUserWithEmailAndPassword(email, password, role);
-        setIsRegistering(false);
-        setSuccess(true);
-      }
+      await AuthService.doCreateUserWithEmailAndPassword(email, password, role);
+      
+      setSuccess(true);
+      
     } catch (error: any) {
-      console.error(error);
+      handleError(error, 'Registration failed');
       
-      let errorMsg = error.message;
-      if (error.code === 'auth/email-already-in-use') {
-        errorMsg = "This email is already registered. Please sign in or use a different email.";
-      }
+      const errorMsg = 
+        error.code === 'auth/email-already-in-use' ? "This email is already registered. Please sign in or use a different email." :
+        error.code === 'auth/weak-password' ? "Password is too weak. Please choose a stronger password." :
+        error.code === 'auth/invalid-email' ? "Please enter a valid email address." :
+        error.code === 'auth/operation-not-allowed' ? "Email/password accounts are not enabled. Please contact support." :
+        error.code === 'auth/too-many-requests' ? "Too many attempts. Please try again later." :
+        "Registration failed. Please try again.";
       
-      setIsRegistering(false);
       setErrorMessage(errorMsg);
-      setSuccess(false);
+    } finally {
+      setIsRegistering(false);
     }
   };
 
   if (success) {
     return (
       <FormContainer title="Registration Successful">
-        <Box sx={{ display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 2 }}>
+        <Box sx={{ display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 3 }}>
           <CheckCircleOutlineIcon color="success" sx={{ fontSize: 64 }} />
           
-          <Typography variant="h6" align="center" gutterBottom>
-            Your account has been created successfully!
-          </Typography>
-          
-          <Typography variant="body1" align="center" gutterBottom>
-            You can now sign in with your credentials.
-          </Typography>
+          <Box sx={{ textAlign: 'center' }}>
+            <Typography variant="h6" gutterBottom>
+              Your account has been created successfully!
+            </Typography>
+            
+            <Typography variant="body1" color="text.secondary" gutterBottom>
+              You can now sign in with your credentials.
+            </Typography>
+          </Box>
 
-          <Link component={RouterLink} to="/login" color="primary" underline="hover">
-            Sign in to your account
+        <Box sx={{ textAlign: "center" }}>
+          <Link 
+            component={RouterLink} 
+            to="/login" 
+            color="primary"
+            underline="hover"
+          >
+            Already have an account? Sign in
           </Link>
+        </Box>
         </Box>
       </FormContainer>
     );
@@ -114,11 +126,13 @@ const Register = () => {
       >
         <TextField
           label="Email"
-          autoComplete="off"
+          type="email"
+          autoComplete="email"
           onChange={(e) => setEmail(e.target.value)}
           value={email}
           required
           fullWidth
+          disabled={isRegistering}
           error={email.length > 0 && !validEmail}
           helperText={
             email.length > 0 && !validEmail
@@ -128,7 +142,9 @@ const Register = () => {
           InputProps={{
             startAdornment: (
               <InputAdornment position="start">
-                <EmailIcon color={validEmail && email.length > 0 ? "success" : "primary"} />
+                <EmailIcon 
+                  color={validEmail && email.length > 0 ? "success" : "primary"} 
+                />
               </InputAdornment>
             ),
           }}
@@ -137,10 +153,12 @@ const Register = () => {
         <TextField
           label="Password"
           type="password"
+          autoComplete="new-password"
           onChange={(e) => setPassword(e.target.value)}
           value={password}
           required
           fullWidth
+          disabled={isRegistering}
           error={password.length > 0 && !validPassword}
           helperText={
             password.length > 0 && !validPassword
@@ -150,7 +168,9 @@ const Register = () => {
           InputProps={{
             startAdornment: (
               <InputAdornment position="start">
-                <LockIcon color={validPassword && password.length > 0 ? "success" : "primary"} />
+                <LockIcon 
+                  color={validPassword && password.length > 0 ? "success" : "primary"} 
+                />
               </InputAdornment>
             ),
           }}
@@ -159,10 +179,12 @@ const Register = () => {
         <TextField
           label="Confirm Password"
           type="password"
+          autoComplete="new-password"
           onChange={(e) => setConfirmPassword(e.target.value)}
           value={confirmPassword}
           required
           fullWidth
+          disabled={isRegistering}
           error={confirmPassword.length > 0 && !validMatch}
           helperText={
             confirmPassword.length > 0 && !validMatch
@@ -172,7 +194,9 @@ const Register = () => {
           InputProps={{
             startAdornment: (
               <InputAdornment position="start">
-                <LockIcon color={validMatch && confirmPassword.length > 0 ? "success" : "primary"} />
+                <LockIcon 
+                  color={validMatch && confirmPassword.length > 0 ? "success" : "primary"} 
+                />
               </InputAdornment>
             ),
           }}
@@ -184,19 +208,25 @@ const Register = () => {
               checked={isAdmin}
               onChange={(e) => setIsAdmin(e.target.checked)}
               color="primary"
+              disabled={isRegistering}
             />
           }
-          label={<Typography variant="body2">Register as administrator</Typography>}
+          label={
+            <Typography variant="body2">
+              Register as administrator
+            </Typography>
+          }
         />
         
         <AppButton
           type="submit"
           variant="contained"
           color="primary"
-          disabled={!validEmail || !validPassword || !validMatch || isRegistering}
+          disabled={!validEmail || !validPassword || !validMatch}
           loading={isRegistering}
           startIcon={<PersonAddIcon />}
           fullWidth
+          sx={{ mt: 1 }}
         >
           Create Account
         </AppButton>

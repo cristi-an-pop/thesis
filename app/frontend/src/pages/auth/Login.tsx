@@ -1,17 +1,11 @@
 import React, { useState, useEffect } from "react";
-import {
-  Box,
-  TextField,
-  Typography,
-  Divider,
-  InputAdornment,
-  Link,
-} from "@mui/material";
+import { Box, TextField, Typography, Divider, InputAdornment, Link } from "@mui/material";
 import { useNavigate, useLocation, Link as RouterLink } from "react-router-dom";
 import AuthService from "../../services/AuthService";
 import useAuth from "../../hooks/useAuth";
 import FormContainer from "../../components/common/FormContainer";
 import AppButton from "../../components/common/AppButton";
+import { handleError } from "../../lib/ErrorHandler";
 
 import EmailIcon from "@mui/icons-material/Email";
 import LockIcon from "@mui/icons-material/Lock";
@@ -19,7 +13,6 @@ import GoogleIcon from "@mui/icons-material/Google";
 
 const Login = () => {
   const { currentUser } = useAuth();
-
   const navigate = useNavigate();
   const location = useLocation();
   const from = location.state?.from?.pathname || "/";
@@ -41,39 +34,59 @@ const Login = () => {
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
+    
+    if (isSigningIn) return;
+    
     try {
-      if (!isSigningIn) {
-        setIsSigningIn(true);
-        await AuthService.doSignInWithEmailAndPassword(email, password);
-        setIsSigningIn(false);
-        navigate(from, { replace: true });
-      }
+      setIsSigningIn(true);
+      setErrorMessage("");
+      
+      await AuthService.doSignInWithEmailAndPassword(email, password);
+      navigate(from, { replace: true });
+      
     } catch (error: any) {
-      const errorMsg = error.code === 'auth/user-not-found' ? 
-        "User not found. Please check your email." : 
-        error.code === 'auth/wrong-password' ? 
-        "Invalid password. Please try again." : 
-        error.message;
+      handleError(error, 'Login failed');
+      
+      const errorMsg = 
+        error.code === 'auth/user-not-found' ? "User not found. Please check your email." : 
+        error.code === 'auth/wrong-password' ? "Invalid password. Please try again." : 
+        error.code === 'auth/invalid-email' ? "Please enter a valid email address." :
+        error.code === 'auth/user-disabled' ? "This account has been disabled." :
+        error.code === 'auth/too-many-requests' ? "Too many failed attempts. Please try again later." :
+        "Sign in failed. Please try again.";
       
       setErrorMessage(errorMsg);
+    } finally {
       setIsSigningIn(false);
     }
-  }
+  };
 
   const handleGoogleSignIn = async (e: React.FormEvent) => {
     e.preventDefault();
+    
+    if (isSigningIn) return;
+    
     try {
-      if (!isSigningIn) {
-        setIsSigningIn(true);
-        await AuthService.doSignInWithGoogle();
-        setIsSigningIn(false);
-        navigate(from, { replace: true });
-      }
+      setIsSigningIn(true);
+      setErrorMessage("");
+      
+      await AuthService.doSignInWithGoogle();
+      navigate(from, { replace: true });
+      
     } catch (error: any) {
-      setErrorMessage(error.message);
+      handleError(error, 'Google sign in failed');
+      
+      const errorMsg = 
+        error.code === 'auth/popup-closed-by-user' ? "Sign in was cancelled." :
+        error.code === 'auth/popup-blocked' ? "Please allow popups for this site." :
+        error.code === 'auth/account-exists-with-different-credential' ? "An account already exists with this email." :
+        "Google sign in failed. Please try again.";
+      
+      setErrorMessage(errorMsg);
+    } finally {
       setIsSigningIn(false);
     }
-  }
+  };
 
   return (
     <FormContainer title="Sign in to your account" errorMessage={errorMessage}>
@@ -84,11 +97,13 @@ const Login = () => {
       >
         <TextField
           label="Email"
+          type="email"
           autoComplete="email"
           onChange={(e) => setEmail(e.target.value)}
           value={email}
           required
           fullWidth
+          disabled={isSigningIn}
           InputProps={{
             startAdornment: (
               <InputAdornment position="start">
@@ -106,6 +121,7 @@ const Login = () => {
           value={password}
           required
           fullWidth
+          disabled={isSigningIn}
           InputProps={{
             startAdornment: (
               <InputAdornment position="start">

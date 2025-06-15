@@ -171,7 +171,7 @@ const Home = () => {
   }
 
   if (loading) {
-    return <Loading message="Loading dashboard..." />;
+    return <Loading message="Loading dashboard..." type="skeleton" height={150} />;
   }
 
   return (

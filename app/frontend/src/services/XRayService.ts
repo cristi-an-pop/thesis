@@ -1,20 +1,9 @@
-import { 
-    collection, 
-    doc, 
-    getDocs, 
-    getDoc, 
-    addDoc, 
-    updateDoc, 
-    deleteDoc, 
-    query, 
-    where, 
-    orderBy, 
-    serverTimestamp 
-} from "firebase/firestore";
+import { collection, doc, getDocs, getDoc, addDoc, updateDoc, deleteDoc, query, where, orderBy, serverTimestamp } from "firebase/firestore";
 import { ref, uploadBytes, getDownloadURL, deleteObject } from "firebase/storage";
 import { db, storage } from "../config/Firebase";
 import { XRayImage } from "../types/XRayImage";
-import { resizeImage } from "@/lib/utils";
+import { resizeImage } from "../lib/utils";
+import { throwError, handleError } from "../lib/ErrorHandler";
 
 const convertXRayImage = (doc: any): XRayImage => {
     const data = doc.data();
@@ -41,8 +30,8 @@ export const getCaseXRayImages = async (caseId: string): Promise<XRayImage[]> =>
         
         return querySnapshot.docs.map(convertXRayImage);
     } catch (error) {
-        console.error(`Error fetching x-rays for case ${caseId}:`, error);
-        throw new Error("Failed to fetch x-ray images");
+        throwError(error, `Failed to fetch x-rays for case ${caseId}`);
+        return [];
     }
 };
 
@@ -57,8 +46,8 @@ export const getPatientXRayImages = async (patientId: string): Promise<XRayImage
         
         return querySnapshot.docs.map(convertXRayImage);
     } catch (error) {
-        console.error(`Error fetching x-rays for patient ${patientId}:`, error);
-        throw new Error("Failed to fetch x-ray images");
+        throwError(error, `Failed to fetch x-rays for patient ${patientId}`);
+        return [];
     }
 };
 
@@ -72,16 +61,13 @@ export const getXRayImageById = async (id: string): Promise<XRayImage | null> =>
         }
         return null;
     } catch (error) {
-        console.error(`Error fetching x-ray with ID ${id}:`, error);
-        throw new Error("Failed to fetch x-ray image");
+        throwError(error, `Failed to fetch x-ray with ID ${id}`);
+        return null;
     }
 };
 
 
-export const addXRayImage = async (
-    file: File, 
-    xrayData: Omit<XRayImage, 'id' | 'imageUrl' | 'thumbnailUrl' | 'uploadedAt'>
-): Promise<string> => {
+export const addXRayImage = async ( file: File, xrayData: Omit<XRayImage, 'id' | 'imageUrl' | 'thumbnailUrl' | 'uploadedAt'>): Promise<string> => {
     try {
         const resized = await resizeImage(file, 1024);
 
@@ -111,32 +97,43 @@ export const addXRayImage = async (
         
         return docRef.id;
     } catch (error) {
-        console.error("Error adding x-ray image:", error);
-        throw new Error("Failed to add x-ray image");
+        throwError(error, 'Failed to add x-ray image');
+        return "";
     }
 };
 
-export const updateXRayImage = async (id: string, updates: Partial<Omit<XRayImage, 'imageUrl' | 'thumbnailUrl' | 'uploadedAt'>>): Promise<void> => {
+export const updateXRayImage = async (id: string, updates: Partial<Omit<XRayImage, 'id' | 'imageUrl' | 'uploadedAt'>>): Promise<void> => {
     try {
+        if (!id) {
+            throwError(new Error('No ID provided'), 'X-ray ID is required');
+        }
+
         const docRef = doc(db, "images", id);
         await updateDoc(docRef, updates);
     } catch (error) {
-        console.error(`Error updating x-ray with ID ${id}:`, error);
-        throw new Error("Failed to update x-ray image");
+        throwError(error, `Failed to update x-ray with ID ${id}`);
     }
 };
 
 export const deleteXRayImage = async (id: string): Promise<void> => {
     try {
+        if (!id) {
+            throwError(new Error('No ID provided'), 'X-ray ID is required');
+        }
+
         const xray = await getXRayImageById(id);
-        if (!xray) throw new Error("X-ray image not found");
-        
-        const storageRef = ref(storage, xray.imageUrl);
-        await deleteObject(storageRef);
-        
+        if (!xray) {
+            throwError(new Error('X-ray not found'), 'X-ray image not found');
+        }
+        try {
+            const storageRef = ref(storage, xray?.imageUrl);
+            await deleteObject(storageRef);
+        } catch (storageError) {
+            handleError(storageError, `Failed to delete storage file for x-ray ${id}`);
+        }
+
         await deleteDoc(doc(db, "images", id));
     } catch (error) {
-        console.error(`Error deleting x-ray with ID ${id}:`, error);
-        throw new Error("Failed to delete x-ray image");
+        throwError(error, `Failed to delete x-ray with ID ${id}`);
     }
 };

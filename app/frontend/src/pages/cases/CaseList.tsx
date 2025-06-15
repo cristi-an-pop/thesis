@@ -7,8 +7,8 @@ import { Patient } from '../../types/Patient';
 import { Case } from '../../types/Case';
 import { DataTable, ColumnDef } from '../../components/common/DataTable';
 import AppButton from '../../components/common/AppButton';
-import { format } from 'date-fns';
 import ConfirmationDialog from '../../components/common/ConfirmationDialog';
+import { formatFirestoreDate } from '@/lib/utils';
 
 import DeleteIcon from '@mui/icons-material/Delete';
 import ArrowBackIcon from '@mui/icons-material/ArrowBack';
@@ -96,7 +96,7 @@ const CaseList = () => {
     {
       id: 'createdAt',
       header: 'Date',
-      cell: (row) => row.createdAt ? format(row.createdAt instanceof Date ? row.createdAt : new Date(row.createdAt), 'MMM d, yyyy') : 'Date unknown',
+      cell: (row) => row.createdAt ? formatFirestoreDate(row.createdAt) : 'Date unknown',
       sortable: true,
       width: 120,
     },

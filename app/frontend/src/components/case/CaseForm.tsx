@@ -6,10 +6,11 @@ import { addXRayImage } from '../../services/XRayService';
 import ModelService from '../../services/ModelService';
 import AppButton from '../common/AppButton';
 import ImageUpload from '../common/ImageUpload';
+import GradCAMService from '../../services/GradCamService';
+import { handleError } from '../../lib/ErrorHandler';
+
 import CloudUploadIcon from '@mui/icons-material/CloudUpload';
 import SmartToyIcon from '@mui/icons-material/SmartToy';
-import PsychologyIcon from '@mui/icons-material/Psychology';
-import GradCAMService from '../../services/GradCAMService';
 
 interface CaseFormProps {
   patientId: string;
@@ -29,9 +30,42 @@ const CaseForm = ({ patientId, onSubmitSuccess }: CaseFormProps) => {
   const [generatingGradcams, setGeneratingGradcams] = useState(false);
   const [gradcamResults, setGradcamResults] = useState<{[diagnosis: string]: string}>({});
 
-  const generateTitle = () => {
-    const now = new Date();
-    return format(now, 'MMM d, yyyy - HH:mm');
+  const generateTitle = () => format(new Date(), 'MMM d, yyyy - HH:mm');
+
+  const createImageFromFile = (file: File): Promise<HTMLImageElement> => {
+    return new Promise((resolve, reject) => {
+      const img = new Image();
+      img.onload = () => resolve(img);
+      img.onerror = () => reject(new Error('Failed to load image'));
+      
+      const reader = new FileReader();
+      reader.onload = (e) => { img.src = e.target?.result as string; };
+      reader.onerror = () => reject(new Error('Failed to read file'));
+      reader.readAsDataURL(file);
+    });
+  };
+
+  const generateGradCAMs = async (predictions: {label: string, probability: number}[], file: File) => {
+    try {
+      setGeneratingGradcams(true);
+      const gradcams: {[diagnosis: string]: string} = {};
+      const img = await createImageFromFile(file);
+      
+      for (const prediction of predictions) {
+        try {
+          const result = await GradCAMService.generateGradCAM(img, prediction.label);
+          gradcams[prediction.label] = result.overlayCanvas.toDataURL('image/png');
+        } catch (error) {
+          handleError(error, `Failed to generate Grad-CAM for ${prediction.label}`);
+        }
+      }
+      
+      setGradcamResults(gradcams);
+    } catch (error) {
+      handleError(error, 'Failed to generate Grad-CAMs');
+    } finally {
+      setGeneratingGradcams(false);
+    }
   };
 
   const handleFileSelect = async (file: File | null) => {
@@ -43,59 +77,20 @@ const CaseForm = ({ patientId, onSubmitSuccess }: CaseFormProps) => {
     if (file && ModelService.isModelReady()) {
       try {
         setClassifying(true);
-        console.log('Auto-classifying uploaded image...');
-        
         const predictions = await ModelService.classifyImageFile(file);
         setAiPredictions(predictions);
         
         if (predictions.length > 0) {
-        setGeneratingGradcams(true);
-        const gradcams: {[diagnosis: string]: string} = {};
-        
-        // Create image element from file
-        const img = await createImageFromFile(file);
-        
-        for (const prediction of predictions) {
-          try {
-            console.log(`Generating Grad-CAM for ${prediction.label}...`);
-            const result = await GradCAMService.generateGradCAM(img, prediction.label);
-            
-            // Convert canvas to base64 for storage
-            gradcams[prediction.label] = result.overlayCanvas.toDataURL('image/png');
-            
-            console.log(`Grad-CAM generated for ${prediction.label}`);
-          } catch (error) {
-            console.error(`Failed to generate Grad-CAM for ${prediction.label}:`, error);
-          }
+          await generateGradCAMs(predictions, file);
         }
         
-        setGradcamResults(gradcams);
-        setGeneratingGradcams(false);
-      }
-        
       } catch (err) {
-        console.error('Classification failed:', err);
+        handleError(err, 'AI classification failed');
         setClassificationError('AI classification failed - you can still create the case manually');
       } finally {
         setClassifying(false);
       }
     }
-  };
-
-  const createImageFromFile = (file: File): Promise<HTMLImageElement> => {
-    return new Promise((resolve, reject) => {
-      const img = new Image();
-      
-      img.onload = () => resolve(img);
-      img.onerror = () => reject(new Error('Failed to load image'));
-      
-      const reader = new FileReader();
-      reader.onload = (e) => {
-        img.src = e.target?.result as string;
-      };
-      reader.onerror = () => reject(new Error('Failed to read file'));
-      reader.readAsDataURL(file);
-    });
   };
 
   const handleSubmit = async (e: React.FormEvent) => {
@@ -110,8 +105,6 @@ const CaseForm = ({ patientId, onSubmitSuccess }: CaseFormProps) => {
       setLoading(true);
       setError(null);
 
-      const title = generateTitle();
-
       const aiDiagnoses = aiPredictions.map(prediction => ({
         name: prediction.label,
         confidence: Math.round(prediction.probability * 100),
@@ -119,7 +112,7 @@ const CaseForm = ({ patientId, onSubmitSuccess }: CaseFormProps) => {
       }));
 
       const caseId = await addCase({
-        title,
+        title: generateTitle(),
         description: description.trim() || undefined,
         diagnosis: aiDiagnoses,
         patientId
@@ -134,11 +127,14 @@ const CaseForm = ({ patientId, onSubmitSuccess }: CaseFormProps) => {
       onSubmitSuccess(caseId);
 
     } catch (err) {
+      handleError(err, 'Failed to create case');
       setError('Failed to create case. Please try again.');
     } finally {
       setLoading(false);
     }
   };
+
+  const isProcessing = classifying || generatingGradcams;
 
   return (
     <Paper sx={{ p: 3 }}>
@@ -156,7 +152,6 @@ const CaseForm = ({ patientId, onSubmitSuccess }: CaseFormProps) => {
 
       <Box component="form" onSubmit={handleSubmit}>
         <Grid container spacing={3}>
-
           <Grid item xs={12}>
             <TextField
               label="Description (Optional)"
@@ -179,7 +174,7 @@ const CaseForm = ({ patientId, onSubmitSuccess }: CaseFormProps) => {
               disabled={loading}
             />
             
-            {(classifying || generatingGradcams) && (
+            {isProcessing && (
               <Box sx={{ mt: 2 }}>
                 <Box sx={{ display: 'flex', alignItems: 'center', mb: 1 }}>
                   <SmartToyIcon sx={{ mr: 1, color: 'primary.main' }} />
@@ -204,15 +199,8 @@ const CaseForm = ({ patientId, onSubmitSuccess }: CaseFormProps) => {
                         color={index === 0 ? 'primary' : 'default'}
                         variant={index === 0 ? 'filled' : 'outlined'}
                         size="small"
-                        icon={gradcamResults[prediction.label] ? <PsychologyIcon /> : undefined}
                       />
                     ))}
-                  </Box>
-                  <Box sx={{ mt: 1, fontSize: '0.875rem', color: 'text.secondary' }}>
-                    Diagnoses and AI visualizations will be automatically added to the case
-                    {Object.keys(gradcamResults).length > 0 && 
-                      ` (${Object.keys(gradcamResults).length} Grad-CAM${Object.keys(gradcamResults).length !== 1 ? 's' : ''} generated)`
-                    }
                   </Box>
                 </Box>
               </Alert>
@@ -225,7 +213,7 @@ const CaseForm = ({ patientId, onSubmitSuccess }: CaseFormProps) => {
                 type="submit"
                 variant="contained"
                 loading={loading}
-                disabled={!xrayFile || classifying}
+                disabled={!xrayFile || isProcessing}
                 startIcon={<CloudUploadIcon />}
               >
                 {aiPredictions.length > 0 ? 'Create Case with AI Diagnosis' : 'Create Case'}

@@ -19,7 +19,6 @@ class GradCAMService {
             const model = await ModelService.loadModel();
             const classIndex = this.getClassIndex(diagnosisName);
             
-            // Handle both URL and HTMLImageElement
             let cleanImageElement: HTMLImageElement;
             if (typeof input === 'string') {
                 cleanImageElement = await this.downloadImageToMemory(input);
@@ -27,21 +26,17 @@ class GradCAMService {
                 cleanImageElement = input;
             }
             
-            // Use MobileNetV2-style preprocessing
             const inputTensor = this.preprocessImageMobileNetV2(cleanImageElement);
             
-            // Generate Grad-CAM using proper feature map gradients
             const heatmapTensor = await this.computeGradCAMAdvanced(model, inputTensor, classIndex);
             
             const gradcamCanvas = await this.createJetColormapCanvas(heatmapTensor);
             const overlayCanvas = await this.createAdvancedOverlay(cleanImageElement, heatmapTensor);
             
-            // Get confidence
             const prediction = model.predict(inputTensor) as tf.Tensor;
             const predictionData = await prediction.data();
             const confidence = predictionData[classIndex] * 100;
             
-            // Cleanup
             inputTensor.dispose();
             heatmapTensor.dispose();
             prediction.dispose();
@@ -61,51 +56,40 @@ class GradCAMService {
         }
     }
 
-    // MobileNetV2-style preprocessing (scales to [-1, 1])
     private preprocessImageMobileNetV2(imageElement: HTMLImageElement): tf.Tensor {
         return tf.tidy(() => {
-            // Create clean canvas
             const canvas = document.createElement('canvas');
             const ctx = canvas.getContext('2d')!;
             canvas.width = 224;
             canvas.height = 224;
             ctx.drawImage(imageElement, 0, 0, 224, 224);
             
-            // Convert to tensor and apply MobileNetV2 preprocessing
             const tensor = tf.browser.fromPixels(canvas)
                 .expandDims(0)
-                .div(127.5)  // Scale to [0, 2]
-                .sub(1);     // Scale to [-1, 1] (MobileNetV2 preprocessing)
+                .div(127.5) 
+                .sub(1);
             
             return tensor;
         });
     }
 
-    // Advanced Grad-CAM computation (like Python version)
     private async computeGradCAMAdvanced(model: tf.GraphModel, inputTensor: tf.Tensor, classIndex: number): Promise<tf.Tensor> {
         return tf.tidy(() => {
             console.log(`Computing advanced GradCAM for class index: ${classIndex}`);
             
-            // For GraphModel, we'll use input gradients but with better processing
             const classOutput = (input: tf.Tensor) => {
                 const predictions = model.predict(input) as tf.Tensor;
                 return predictions.slice([0, classIndex], [1, 1]).squeeze();
             };
             
-            // Get gradients
             const gradFunction = tf.grad(classOutput);
             const gradients = gradFunction(inputTensor);
             
-            // Process gradients similar to Python version
-            // 1. Take absolute value and mean across channels
             let heatmap = gradients.abs().mean(-1).squeeze(); // [224, 224]
             
-            // 2. Apply ReLU (keep only positive values)
             heatmap = heatmap.relu();
-
-            heatmap = this.applyGaussianBlur(heatmap, 15); // kernel size 3
+            heatmap = this.applyGaussianBlur(heatmap, 15);
             
-            // 3. Normalize with better scaling
             const maxVal = heatmap.max();
             if (maxVal.dataSync()[0] > 0) {
                 heatmap = heatmap.div(maxVal);
@@ -116,20 +100,15 @@ class GradCAMService {
         });
     }
 
-    // Add this helper method for Gaussian blur:
     private applyGaussianBlur(tensor: tf.Tensor, kernelSize: number = 3): tf.Tensor {
         return tf.tidy(() => {
-            // Create Gaussian kernel
             const sigma = kernelSize / 3;
             const kernel = this.createGaussianKernel(kernelSize, sigma) as tf.Tensor4D;
             
-            // Reshape tensor for conv2d: [batch, height, width, channels]
-            const reshaped = tensor.expandDims(0).expandDims(-1); // [1, 224, 224, 1]
+            const reshaped = tensor.expandDims(0).expandDims(-1);
             
-            // Apply convolution
             const blurred = tf.conv2d(reshaped as any, kernel, 1, 'same');
             
-            // Remove extra dimensions
             return blurred.squeeze();
         });
     }
@@ -150,7 +129,6 @@ class GradCAMService {
             }
         }
         
-        // Normalize kernel
         for (let i = 0; i < size; i++) {
             for (let j = 0; j < size; j++) {
                 const currentValue = kernel.get(i, j, 0, 0);
@@ -162,7 +140,6 @@ class GradCAMService {
     });
 }
 
-    // Create Jet colormap canvas (like OpenCV COLORMAP_JET)
     private async createJetColormapCanvas(heatmapTensor: tf.Tensor): Promise<HTMLCanvasElement> {
         const canvas = document.createElement('canvas');
         canvas.width = 224;
@@ -174,7 +151,6 @@ class GradCAMService {
         
         console.log('Jet colormap - Heatmap range:', Math.min(...heatmapData), 'to', Math.max(...heatmapData));
         
-        // Jet colormap implementation (Blue -> Cyan -> Green -> Yellow -> Red)
         for (let i = 0; i < heatmapData.length; i++) {
             const intensity = heatmapData[i]; // [0, 1]
             const pixelIndex = i * 4;
@@ -223,34 +199,28 @@ class GradCAMService {
         return canvas;
     }
 
-    // Advanced overlay (like Python cv2.addWeighted)
     private async createAdvancedOverlay(imageElement: HTMLImageElement, heatmapTensor: tf.Tensor): Promise<HTMLCanvasElement> {
         const canvas = document.createElement('canvas');
         canvas.width = 224;
         canvas.height = 224;
         const ctx = canvas.getContext('2d')!;
         
-        // Create clean base image
         const baseCanvas = document.createElement('canvas');
         const baseCtx = baseCanvas.getContext('2d')!;
         baseCanvas.width = 224;
         baseCanvas.height = 224;
         baseCtx.drawImage(imageElement, 0, 0, 224, 224);
         
-        // Get base image data
         const baseImageData = baseCtx.getImageData(0, 0, 224, 224);
         
-        // Create heatmap canvas
         const heatmapCanvas = await this.createJetColormapCanvas(heatmapTensor);
         const heatmapCtx = heatmapCanvas.getContext('2d')!;
         const heatmapImageData = heatmapCtx.getImageData(0, 0, 224, 224);
-        
-        // Blend images (like cv2.addWeighted with alpha=0.5)
+
         const blendedImageData = ctx.createImageData(224, 224);
         const alpha = 0.5;
         
         for (let i = 0; i < baseImageData.data.length; i += 4) {
-            // Blend RGB channels
             blendedImageData.data[i] = Math.floor(
                 baseImageData.data[i] * (1 - alpha) + heatmapImageData.data[i] * alpha
             );
@@ -267,7 +237,6 @@ class GradCAMService {
         return canvas;
     }
 
-    // Keep existing helper methods
     private async downloadImageToMemory(imageUrl: string): Promise<HTMLImageElement> {
         try {
             const response = await fetch(imageUrl);
